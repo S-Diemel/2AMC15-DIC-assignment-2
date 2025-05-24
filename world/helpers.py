@@ -7,6 +7,10 @@ def action_to_direction(action):
         1: (0, -1),  # Up
         2: (-1, 0),  # Left
         3: (1, 0),   # Right
+        4: (-1, 1),  # Down-left
+        5: (1, 1),   # Down-right
+        6: (-1, -1), # Up-Left
+        7: (1, -1),  # Up-Right
     }
     return directions[action]
 
