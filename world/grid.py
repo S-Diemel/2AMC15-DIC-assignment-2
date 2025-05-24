@@ -16,7 +16,7 @@ class Grid:
         - Empty: 0,
         - Boundary: 1,
         - Obstacle: 2,
-        - Dirt: 3,
+        - Target: 3,
         - Charger: 4
 
         Args:
@@ -37,7 +37,8 @@ class Grid:
             "boundary": 1,
             "obstacle": 2,
             "target": 3,
-            "charger": 4
+            "charger": 4,
+            "forbidden": 5,
         }
 
     def place_object(self, x, y, type):

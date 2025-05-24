@@ -15,6 +15,7 @@ from flask_socketio import SocketIO
 try:
     from world import Grid
     from world import GRID_CONFIGS_FP
+    print('ok')
 except ModuleNotFoundError:
     from os import path
     from os import pardir
@@ -43,7 +44,9 @@ def draw_grid(grid):
                  1: 'cell_boundary',
                  2: 'cell_obstacle',
                  3: 'cell_target',
-                 4: 'cell_charger',}
+                 4: 'cell_charger',
+                 5: 'cell_forbidden'
+                 }
     
     return {'grid': render_template(
         'grid.html',
@@ -83,6 +86,7 @@ def build_grid():
     obstacles = ast.literal_eval(request.args.get('obstacles'))
     targets = ast.literal_eval(request.args.get('targets'))
     chargers = ast.literal_eval(request.args.get('chargers'))
+    forbidden = ast.literal_eval(request.args.get('forbidden'))
     to_save = False if request.args.get('save') == 'false' else True
     name = str(request.args.get('name'))
 
@@ -94,6 +98,8 @@ def build_grid():
         grid.place_object(x, y, "target")
     for (x, y) in chargers:
         grid.place_object(x, y, "charger")
+    for (x, y) in forbidden:
+        grid.place_object(x, y, "forbidden")
     
     drawn_grid = draw_grid(grid)
 
@@ -108,4 +114,5 @@ def build_grid():
 
 
 if __name__ == '__main__':
-    socket_io.run(app, debug=False, allow_unsafe_werkzeug=True)
+    #socket_io.run(app, debug=False, allow_unsafe_werkzeug=True)
+    app.run(host="0.0.0.0", port=8000, debug=False)

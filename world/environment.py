@@ -197,7 +197,7 @@ class Environment:
         """
 
         match self.grid[new_pos]:
-            case 0:  # Moved to an empty tile
+            case 0 | 5:  # Moved to an empty tile or forbidden tile
                 self.agent_pos = new_pos
                 self.info["agent_moved"] = True
                 self.world_stats["total_agent_moves"] += 1
@@ -219,7 +219,42 @@ class Environment:
                 raise ValueError(f"Grid is badly formed. It has a value of "
                                  f"{self.grid[new_pos]} at position "
                                  f"{new_pos}.")
-        
+
+    def _compute_sensors(self):
+        """From current self.agent_pos and self.grid, compute:
+           - steps to nearest obstacle in up/down/left/right
+           - dx, dy to nearest remaining target
+        """
+        x, y = self.agent_pos
+
+        # Steps to obstacle
+        def steps(delta_r, delta_c):
+            dist = 0
+            sensor_x, sensor_y = x, y
+            while self.grid[sensor_x, sensor_y] != 1 and self.grid[sensor_x, sensor_y] != 2:
+                sensor_x += delta_r
+                sensor_y += delta_c
+                dist += 1
+            return dist
+
+        steps_up = steps(0,  -1)
+        steps_down = steps( 0,  1)
+        steps_left = steps( -1, 0)
+        steps_right = steps( 1,  0)
+
+        # Distance to nearest target
+        targets = np.argwhere(self.grid == 3)
+        if targets.size == 0:
+            # no targets left
+            dx = dy = None
+        else:
+            # Manhattan distance
+            dists = np.abs(targets - np.array([y, x])).sum(axis=1)
+            idx   = np.argmin(dists)
+            target_x, target_y = targets[idx]
+            dx, dy = target_x - x, target_y - y
+        sensor_vector = np.array([x, y, steps_up, steps_down, steps_left, steps_right, dx, dy])
+        return sensor_vector
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool]:
         """This function makes the agent take a step on the grid.
@@ -283,7 +318,8 @@ class Environment:
                 sleep(time_to_wait)
             self.gui.render(self.grid, self.agent_pos, self.info,
                             reward, is_single_step)
-
+        sensor_vector = self._compute_sensors()
+        print(sensor_vector)
         return self.agent_pos, reward, self.terminal_state, self.info
 
     @staticmethod
@@ -311,6 +347,8 @@ class Environment:
             case 3:  # Moved to a target tile
                 reward = 10
                 # "Illegal move"
+            case 5: # forbidden zone
+                reward = -5
             case _:
                 raise ValueError(f"Grid cell should not have value: {grid[agent_pos]}.",
                                  f"at position {agent_pos}")

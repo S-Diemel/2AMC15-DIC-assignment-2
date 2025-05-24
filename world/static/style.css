@@ -65,6 +65,17 @@
     background: #ff7700;
 }
 
+.cell_forbidden {
+        /* center the cell content */
+    justify-content: center;
+    align-items: center;
+    display: flex;
+    font-family: Arial, serif;
+    font-size: 10px;
+    font-weight: bold;
+    background: #ff7f7f;
+}
+
 .cell_selected {
     justify-content: center;
     align-items: center;

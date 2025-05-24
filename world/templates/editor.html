@@ -16,6 +16,7 @@
     <option value="obstacle">obstacle</option>
     <option value="target">target</option>
     <option value="charger">charger</option>
+    <option value="forbidden">forbidden</option>
     
 </select>
 <label for="grid_name">Grid name</label>
@@ -40,6 +41,11 @@
         for (let i = 0; i < chargers.length; i++) {
             c_coords.push(chargers[i].id);
         }
+        let forbidden = document.getElementsByClassName("cell_forbidden");
+        let f_coords = Array();
+        for (let i = 0; i < forbidden.length; i++) {
+            f_coords.push(forbidden[i].id);
+        }
         let height = document.getElementById('height').value;
         let width = document.getElementById('width').value;
         $.ajax({
@@ -51,6 +57,7 @@
                 obstacles: '[' + ob_coords.join(',') + ']',
                 targets: '[' + t_coords.join(',') + ']',
                 chargers: '[' + c_coords.join(',') + ']',
+                forbidden: '[' + f_coords.join(',') + ']',
                 save: save,
                 name: name
             },
@@ -68,7 +75,8 @@
         let type = document.getElementById('draw').value;
         if ((tile.className === 'cell_obstacle')
             || (tile.className === 'cell_target')
-            || (tile.className === 'cell_charger')) {
+            || (tile.className === 'cell_charger')
+            || (tile.className === 'cell_forbidden')){
             // If there's already something on the tile AND it was one of the placeable tile types, make it empty again.
             tile.className = 'cell_empty';
         } else if (tile.className === 'cell_empty') {
@@ -79,6 +87,8 @@
                 tile.className = 'cell_target'
             } else if (type === 'charger') {
                 tile.className = 'cell_charger'
+            } else if (type === 'forbidden') {
+                tile.className = 'cell_forbidden'
             } 
         }
     }
