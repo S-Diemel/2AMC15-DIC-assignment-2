@@ -8,6 +8,7 @@ from time import perf_counter, sleep
 import numpy as np
 import pygame
 from pygame import gfxdraw
+import math
 
 
 class GUI:
@@ -140,20 +141,44 @@ class GUI:
         textpos.centery = rect.centery
         surface.blit(text, textpos)
 
-    def _draw_agent(self, surface: pygame.Surface,
-                    agent_pos: list[tuple[int, int]],
-                    x_offset: int, y_offset: int):
-        """Draws the agent on the grid world."""
+    def _draw_agent(self,
+                    surface: pygame.Surface,
+                    agent_pos: tuple[int, int],
+                    agent_orientation: float,  # now in degrees
+                    x_offset: int,
+                    y_offset: int):
+        """Draws the agent on the grid world, with a yellow 'nose' dot."""
+        # compute center of the agent’s circle
+        x = agent_pos[0] * self.scalar + x_offset
+        y = agent_pos[1] * self.scalar + y_offset
+        outer_r = int(self.scalar / 2) - 8
+        rect = pygame.Rect(x + 4, y + 4,
+                           self.scalar - 8, self.scalar - 8)
+        cx, cy = rect.centerx, rect.centery
 
-        # Draw the agent as a gray circle
-        x = (agent_pos[0] * self.scalar) + x_offset
-        y = (agent_pos[1] * self.scalar) + y_offset
-        r = int(self.scalar / 2) - 8
-        rect = pygame.Rect(x + 4, y + 4, self.scalar - 8, self.scalar - 8)
-        gfxdraw.aacircle(surface, rect.centerx, rect.centery, r,
-                            (0, 0, 102))
-        gfxdraw.filled_circle(surface, rect.centerx, rect.centery, r,
-                                (0, 0, 102))
+        # draw the main circle (agent body)
+        gfxdraw.aacircle(surface, cx, cy, outer_r, (0, 0, 102))
+        gfxdraw.filled_circle(surface, cx, cy, outer_r, (0, 0, 102))
+
+        # convert orientation degrees to radians;
+        # define 0° as “up” and positive rotation clockwise
+        angle_rad = math.radians(agent_orientation)
+
+        # parameters for the yellow dot
+        dot_r = 4  # radius of the “nose” dot
+        # place it just inside the circle’s rim
+        dot_dist = outer_r - dot_r - 2
+
+        # compute the dot’s position:
+        #   x offset = sin(angle) * distance
+        #   y offset = -cos(angle) * distance
+        # (pygame’s y-axis increases downward)
+        dot_x = cx + math.sin(angle_rad) * dot_dist
+        dot_y = cy - math.cos(angle_rad) * dot_dist
+
+        # draw the yellow “nose” dot
+        gfxdraw.aacircle(surface, int(dot_x), int(dot_y), dot_r, (255, 255, 0))
+        gfxdraw.filled_circle(surface, int(dot_x), int(dot_y), dot_r, (255, 255, 0))
 
     def _draw_info(self, surface) -> tuple[pygame.Rect, pygame.Rect]:
         """Draws the info panel on the surface.
@@ -209,7 +234,7 @@ class GUI:
         return pause_rect, step_rect
 
 
-    def render(self, grid_cells: np.ndarray, agent_pos: tuple[int, int],
+    def render(self, grid_cells: np.ndarray, agent_pos: tuple[int, int], agent_orientation: int,
                info: dict[str, any], reward: int, is_single_step: bool = False):
         """Render the environment.
 
@@ -253,7 +278,7 @@ class GUI:
         background.fill((238, 241, 240), self.info_panel_rect)
         # Draw each layer on the surface
         self._draw_grid(background, grid_cells, x_offset, y_offset)
-        self._draw_agent(background, agent_pos, x_offset, y_offset)
+        self._draw_agent(background, agent_pos, agent_orientation, x_offset, y_offset)
         pause_rect, step_rect = self._draw_info(background)
 
         # Blit the surface onto the window

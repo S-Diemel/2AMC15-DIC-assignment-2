@@ -5,11 +5,9 @@ def action_to_values(action):
     values = {
         0: (1, 0),   # go
         1: (0, 0),  # stop
-        2: (0, -45),  # Left 45
-        3: (0, 45),   # Right 45
-        4: (0, -90),  # left 90
-        5: (0, 90),   # right 90
-        6: (0, 0), # do nothing
+        2: (0, -1),  # Left
+        3: (0, 1),   # Right
+        4: (0, 0), # do nothing
     }
     return values[action]
 

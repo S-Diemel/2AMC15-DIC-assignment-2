@@ -196,7 +196,7 @@ class Environment:
 
         feature_vector = self._compute_features()
         print(feature_vector, 'reset')
-        return self.agent_pos
+        return feature_vector
 
     def _move_agent(self, new_pos: tuple[int, int]):
         """Moves the agent, if possible and updates the 
@@ -214,6 +214,7 @@ class Environment:
             case 1 | 2:  # Moved to a wall or obstacle
                 self.world_stats["total_failed_moves"] += 1
                 self.info["agent_moved"] = False
+                self.speed = 0
                 pass
             case 3:  # Moved to a target tile
                 self.agent_pos = new_pos
@@ -249,8 +250,6 @@ class Environment:
             return dist
 
         steps_fw = steps(self.orientation)
-        steps_left = steps((self.orientation-90)%360)
-        steps_right = steps((self.orientation+90)%360)
         steps_fw_left = steps((self.orientation-45)%360) # Up-Left
         steps_fw_right = steps((self.orientation+45)%360)  # Up-Right
 
@@ -267,21 +266,22 @@ class Environment:
             dx, dy = target_x - x, target_y - y
         feature_vector = np.array([x, y,
                                    self.speed, self.orientation/360,
-                                   steps_fw, steps_left, steps_right, steps_fw_left, steps_fw_right,
+                                   steps_fw, steps_fw_left, steps_fw_right,
                                    dx, dy])
         return feature_vector
 
     def _calc_new_position(self, action):
-        new_speed, delta_orientation = action_to_values(action)
-        self.orientation = (self.orientation + delta_orientation) % 360
+        new_speed, sign_orientation = action_to_values(action)
         if action == 0 or action == 1:
             self.speed = new_speed
 
         if self.speed == 1:
+            self.orientation = (self.orientation + sign_orientation*45) % 360
             direction = orientation_to_directions(self.orientation)
             new_position = (self.agent_pos[0] + direction[0], self.agent_pos[1] + direction[1])
             return new_position
         else:
+            self.orientation = (self.orientation + sign_orientation*45) % 360
             new_position = self.agent_pos
             return new_position
 
@@ -320,7 +320,7 @@ class Environment:
                 # Otherwise, we render the current state only
                 paused_info = self._reset_info()
                 paused_info["agent_moved"] = True
-                self.gui.render(self.grid, self.agent_pos, paused_info,
+                self.gui.render(self.grid, self.agent_pos, self.orientation, paused_info,
                                 0, is_single_step)    
 
         # Add stochasticity into the agent action
@@ -346,11 +346,12 @@ class Environment:
             time_to_wait = self.target_spf - (time() - start_time)
             if time_to_wait > 0:
                 sleep(time_to_wait)
-            self.gui.render(self.grid, self.agent_pos, self.info,
+            self.gui.render(self.grid, self.agent_pos, self.orientation, self.info,
                             reward, is_single_step)
         feature_vector = self._compute_features()
         print(feature_vector)
-        return self.agent_pos, reward, self.terminal_state, self.info
+        print(action)
+        return feature_vector, reward, self.terminal_state, self.info
 
     @staticmethod
     def _default_reward_function(grid, agent_pos) -> float:
