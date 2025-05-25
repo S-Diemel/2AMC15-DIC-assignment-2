@@ -241,6 +241,10 @@ class Environment:
         steps_down = steps( 0,  1)
         steps_left = steps( -1, 0)
         steps_right = steps( 1,  0)
+        steps_down_left = steps(-1, 1)  # Down-left
+        steps_down_right = steps(1, 1)   # Down-right
+        steps_up_left = steps(-1, -1) # Up-Left
+        steps_up_right = steps(1, -1)  # Up-Right
 
         # Distance to nearest target
         targets = np.argwhere(self.grid == 3)
@@ -253,7 +257,10 @@ class Environment:
             idx   = np.argmin(dists)
             target_x, target_y = targets[idx]
             dx, dy = target_x - x, target_y - y
-        sensor_vector = np.array([x, y, steps_up, steps_down, steps_left, steps_right, dx, dy])
+        sensor_vector = np.array([x, y,
+                                  steps_up, steps_down, steps_left, steps_right,
+                                  steps_down_left, steps_down_right, steps_up_left, steps_up_right,
+                                  dx, dy])
         return sensor_vector
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool]:

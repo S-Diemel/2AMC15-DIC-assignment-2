@@ -52,22 +52,22 @@ def main(grid_paths: list[Path], no_gui: bool, iters: int, fps: int,
         
         # Initialize agent
         agent = RandomAgent()
-        
+        for _ in range(1):
         # Always reset the environment to initial state
-        state = env.reset()
-        for _ in trange(iters):
-            
-            # Agent takes an action based on the latest observation and info.
-            action = agent.take_action(state)
+            state = env.reset()
+            for _ in trange(iters):
 
-            # The action is performed in the environment
-            state, reward, terminated, info = env.step(action)
-            
-            # If the final state is reached, stop.
-            if terminated:
-                break
+                # Agent takes an action based on the latest observation and info.
+                action = agent.take_action(state)
 
-            agent.update(state, reward, info["actual_action"])
+                # The action is performed in the environment
+                state, reward, terminated, info = env.step(action)
+
+                # If the final state is reached, stop.
+                if terminated:
+                    break
+
+                agent.update(state, reward, info["actual_action"])
 
         # Evaluate the agent
         Environment.evaluate_agent(grid, agent, iters, sigma, random_seed=random_seed)
