@@ -1,18 +1,31 @@
 from pathlib import Path
 from warnings import warn
 
-def action_to_direction(action):
-    directions = {
-        0: (0, 1),   # Down
-        1: (0, -1),  # Up
-        2: (-1, 0),  # Left
-        3: (1, 0),   # Right
-        4: (-1, 1),  # Down-left
-        5: (1, 1),   # Down-right
-        6: (-1, -1), # Up-Left
-        7: (1, -1),  # Up-Right
+def action_to_values(action):
+    values = {
+        0: (1, 0),   # go
+        1: (0, 0),  # stop
+        2: (0, -45),  # Left 45
+        3: (0, 45),   # Right 45
+        4: (0, -90),  # left 90
+        5: (0, 90),   # right 90
+        6: (0, 0), # do nothing
     }
-    return directions[action]
+    return values[action]
+
+def orientation_to_directions(orientation):
+    directions = {
+        0: (0, -1),       # Up
+        45: (1, -1),      # Up-Right
+        90: (1, 0),       # Right
+        135: (1, 1),      # Down-Right
+        180: (0, 1),      # Down
+        225: (-1, 1),     # Down-Left
+        270: (-1, 0),     # Left
+        315: (-1, -1),    # Up-Left
+    }
+    return directions[orientation]
+
 
 def save_results(file_name, world_stats, path_image, show_images):
     out_dir = Path("results/")

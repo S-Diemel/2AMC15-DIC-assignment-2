@@ -9,7 +9,7 @@ from pathlib import Path
 from warnings import warn
 from time import time, sleep
 from datetime import datetime
-from world.helpers import save_results, action_to_direction
+from world.helpers import save_results, action_to_values, orientation_to_directions
 
 try:
     from agents import BaseAgent
@@ -41,7 +41,8 @@ class Environment:
                  agent_start_pos: tuple[int, int] = None,
                  reward_fn: callable = None,
                  target_fps: int = 30,
-                 random_seed: int | float | str | bytes | bytearray | None = 0):
+                 random_seed: int | float | str | bytes | bytearray | None = 0,
+                 orientation = 0):
         
         """Creates the Grid Environment for the Reinforcement Learning robot
         from the provided file.
@@ -94,6 +95,11 @@ class Environment:
             self.target_spf = 1. / target_fps
         self.gui = None
 
+        #initial speed
+        self.speed = 0
+
+        #initial orientation
+        self.orientation = orientation
     def _reset_info(self) -> dict:
         """Resets the info dictionary.
 
@@ -185,6 +191,9 @@ class Environment:
         else:
             if self.gui is not None:
                 self.gui.close()
+
+        self.speed  = 0
+
         feature_vector = self._compute_features()
         print(feature_vector, 'reset')
         return self.agent_pos
@@ -229,7 +238,8 @@ class Environment:
         x, y = self.agent_pos
 
         # Steps to obstacle
-        def steps(delta_r, delta_c):
+        def steps(orientation):
+            delta_r, delta_c = orientation_to_directions(orientation)
             dist = 0
             sensor_x, sensor_y = x, y
             while self.grid[sensor_x, sensor_y] != 1 and self.grid[sensor_x, sensor_y] != 2:
@@ -238,14 +248,11 @@ class Environment:
                 dist += 1
             return dist
 
-        steps_up = steps(0,  -1)
-        steps_down = steps( 0,  1)
-        steps_left = steps( -1, 0)
-        steps_right = steps( 1,  0)
-        steps_down_left = steps(-1, 1)  # Down-left
-        steps_down_right = steps(1, 1)   # Down-right
-        steps_up_left = steps(-1, -1) # Up-Left
-        steps_up_right = steps(1, -1)  # Up-Right
+        steps_fw = steps(self.orientation)
+        steps_left = steps((self.orientation-90)%360)
+        steps_right = steps((self.orientation+90)%360)
+        steps_fw_left = steps((self.orientation-45)%360) # Up-Left
+        steps_fw_right = steps((self.orientation+45)%360)  # Up-Right
 
         # Distance to nearest target
         targets = np.argwhere(self.grid == 3)
@@ -259,10 +266,26 @@ class Environment:
             target_x, target_y = targets[idx]
             dx, dy = target_x - x, target_y - y
         feature_vector = np.array([x, y,
-                                  steps_up, steps_down, steps_left, steps_right,
-                                  steps_down_left, steps_down_right, steps_up_left, steps_up_right,
-                                  dx, dy])
+                                   self.speed, self.orientation/360,
+                                   steps_fw, steps_left, steps_right, steps_fw_left, steps_fw_right,
+                                   dx, dy])
         return feature_vector
+
+    def _calc_new_position(self, action):
+        new_speed, delta_orientation = action_to_values(action)
+        self.orientation = (self.orientation + delta_orientation) % 360
+        if action == 0 or action == 1:
+            self.speed = new_speed
+
+        if self.speed == 1:
+            direction = orientation_to_directions(self.orientation)
+            new_position = (self.agent_pos[0] + direction[0], self.agent_pos[1] + direction[1])
+            return new_position
+        else:
+            new_position = self.agent_pos
+            return new_position
+
+
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool]:
         """This function makes the agent take a step on the grid.
@@ -309,8 +332,7 @@ class Environment:
         
         # Make the move
         self.info["actual_action"] = actual_action
-        direction = action_to_direction(actual_action)    
-        new_pos = (self.agent_pos[0] + direction[0], self.agent_pos[1] + direction[1])
+        new_pos = self._calc_new_position(actual_action)
 
         # Calculate the reward for the agent
         reward = self.reward_fn(self.grid, new_pos)
