@@ -185,7 +185,8 @@ class Environment:
         else:
             if self.gui is not None:
                 self.gui.close()
-
+        feature_vector = self._compute_features()
+        print(feature_vector, 'reset')
         return self.agent_pos
 
     def _move_agent(self, new_pos: tuple[int, int]):
@@ -220,7 +221,7 @@ class Environment:
                                  f"{self.grid[new_pos]} at position "
                                  f"{new_pos}.")
 
-    def _compute_sensors(self):
+    def _compute_features(self):
         """From current self.agent_pos and self.grid, compute:
            - steps to nearest obstacle in up/down/left/right
            - dx, dy to nearest remaining target
@@ -257,11 +258,11 @@ class Environment:
             idx   = np.argmin(dists)
             target_x, target_y = targets[idx]
             dx, dy = target_x - x, target_y - y
-        sensor_vector = np.array([x, y,
+        feature_vector = np.array([x, y,
                                   steps_up, steps_down, steps_left, steps_right,
                                   steps_down_left, steps_down_right, steps_up_left, steps_up_right,
                                   dx, dy])
-        return sensor_vector
+        return feature_vector
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool]:
         """This function makes the agent take a step on the grid.
@@ -325,8 +326,8 @@ class Environment:
                 sleep(time_to_wait)
             self.gui.render(self.grid, self.agent_pos, self.info,
                             reward, is_single_step)
-        sensor_vector = self._compute_sensors()
-        print(sensor_vector)
+        feature_vector = self._compute_features()
+        print(feature_vector)
         return self.agent_pos, reward, self.terminal_state, self.info
 
     @staticmethod
