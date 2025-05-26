@@ -222,7 +222,6 @@ class Environment:
         self.speed  = 0
 
         feature_vector = self._compute_features()
-        print(feature_vector, 'reset')
         return feature_vector
 
     def _move_agent(self, new_pos: tuple[int, int]):
@@ -397,11 +396,12 @@ class Environment:
         match grid[agent_pos]:
             case 0:  # Moved to an empty tile
                 reward = -1
-            case 1 | 2:  # Moved to a wall or obstacle
+            case 1:  # Moved to a wall
                 reward = -5
-                pass
+            case 2:  # Moved to a obstacle
+                reward = -10
             case 3:  # Moved to a target tile
-                reward = 10
+                reward = 100
                 # "Illegal move"
             case 5: # forbidden zone
                 reward = -5

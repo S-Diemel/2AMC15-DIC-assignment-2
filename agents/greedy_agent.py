@@ -20,7 +20,7 @@ class GreedyAgent(BaseAgent):
             if speed == 0:
                 action = 0
             else:
-                action = 4
+                action = 0
 
 
         else:

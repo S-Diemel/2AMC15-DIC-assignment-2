@@ -15,9 +15,9 @@ class GUI:
     CELL_COLORS = [
         (255, 255, 255),  # Empty cell
         (57, 57, 57),     # Boundary cell
-        (57, 57, 57),     # Obstacle cell
+        (255, 119, 0),     # Obstacle cell
         (34, 139, 34),    # target cell
-        (255, 119, 0),    # Charger cell
+        (0, 255, 255),    # Charger cell
         (255, 127, 127)   # forbidden cell
     ]
     INFO_NAME_MAP = [
