@@ -18,7 +18,7 @@
     font-family: Arial, serif;
     font-size: 10px;
     font-weight: bold;
-    background: #393939;
+    background: #ff7700;
 }
 
 .cell_boundary {
@@ -62,7 +62,7 @@
     font-family: Arial, serif;
     font-size: 10px;
     font-weight: bold;
-    background: #ff7700;
+    background: #00ffff;
 }
 
 .cell_forbidden {

@@ -13,7 +13,8 @@
 <input type="number" id="width" name="width" value="10" min="5" onchange="render_grid()">
 <label for="draw">Choose type of tile to draw</label>
 <select name="draw" id="draw">
-    <option value="obstacle">obstacle</option>
+    <option value="boundary">boundary (lower penalty)</option>
+    <option value="obstacle">obstacle (higher penalty)</option>
     <option value="target">target</option>
     <option value="charger">charger</option>
     <option value="forbidden">forbidden</option>
@@ -30,6 +31,11 @@
         let ob_coords = Array();
         for (let i = 0; i < obstacles.length; i++) {
             ob_coords.push(obstacles[i].id);
+        }
+        let boundaries = document.getElementsByClassName("cell_boundary");
+        let b_coords = Array();
+        for (let i = 0; i < boundaries.length; i++) {
+            b_coords.push(boundaries[i].id);
         }
         let targets = document.getElementsByClassName("cell_target");
         let t_coords = Array();
@@ -55,6 +61,7 @@
                 height: height,
                 width: width,
                 obstacles: '[' + ob_coords.join(',') + ']',
+                boundaries: '[' + b_coords.join(',') + ']',
                 targets: '[' + t_coords.join(',') + ']',
                 chargers: '[' + c_coords.join(',') + ']',
                 forbidden: '[' + f_coords.join(',') + ']',
@@ -74,6 +81,7 @@
         let tile = document.getElementById("(" + x + "," + y + ")");
         let type = document.getElementById('draw').value;
         if ((tile.className === 'cell_obstacle')
+            || (tile.className === 'cell_boundary')
             || (tile.className === 'cell_target')
             || (tile.className === 'cell_charger')
             || (tile.className === 'cell_forbidden')){
@@ -83,6 +91,8 @@
             // If it is empty, place something based on the type chosen.
             if (type === 'obstacle') {
                 tile.className = 'cell_obstacle'
+            } else if (type === 'boundary') {
+                tile.className = 'cell_boundary'
             } else if (type === 'target') {
                 tile.className = 'cell_target'
             } else if (type === 'charger') {

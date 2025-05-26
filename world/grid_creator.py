@@ -84,6 +84,7 @@ def build_grid():
     n_rows = int(request.args.get('height'))
     n_cols = int(request.args.get('width'))
     obstacles = ast.literal_eval(request.args.get('obstacles'))
+    boundaries = ast.literal_eval(request.args.get('boundaries'))
     targets = ast.literal_eval(request.args.get('targets'))
     chargers = ast.literal_eval(request.args.get('chargers'))
     forbidden = ast.literal_eval(request.args.get('forbidden'))
@@ -94,6 +95,8 @@ def build_grid():
     grid = Grid(n_cols, n_rows)
     for (x, y) in obstacles:
         grid.place_object(x, y, "obstacle")
+    for (x, y) in boundaries:
+        grid.place_object(x, y, "boundary")
     for (x, y) in targets:
         grid.place_object(x, y, "target")
     for (x, y) in chargers:

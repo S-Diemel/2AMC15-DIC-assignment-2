@@ -8,7 +8,7 @@ from tqdm import trange
 
 try:
     from world import Environment
-    from agents.random_agent import RandomAgent
+    from agents.greedy_agent import GreedyAgent
 except ModuleNotFoundError:
     from os import path
     from os import pardir
@@ -28,14 +28,14 @@ def parse_args():
                         "one.")
     p.add_argument("--no_gui", action="store_true",
                    help="Disables rendering to train faster")
-    p.add_argument("--sigma", type=float, default=0.1,
+    p.add_argument("--sigma", type=float, default=0,
                    help="Sigma value for the stochasticity of the environment.")
     p.add_argument("--fps", type=int, default=30,
                    help="Frames per second to render at. Only used if "
                         "no_gui is not set.")
     p.add_argument("--iter", type=int, default=1000,
                    help="Number of iterations to go through.")
-    p.add_argument("--random_seed", type=int, default=0,
+    p.add_argument("--random_seed", type=int, default=None,
                    help="Random seed value for the environment.")
     return p.parse_args()
 
@@ -47,11 +47,11 @@ def main(grid_paths: list[Path], no_gui: bool, iters: int, fps: int,
     for grid in grid_paths:
         
         # Set up the environment
-        env = Environment(grid, no_gui,sigma=sigma, target_fps=fps, 
+        env = Environment(grid, no_gui,sigma=sigma, target_fps=fps,
                           random_seed=random_seed)
         
         # Initialize agent
-        agent = RandomAgent()
+        agent = GreedyAgent()
         for _ in range(1):
         # Always reset the environment to initial state
             state = env.reset()
@@ -59,7 +59,6 @@ def main(grid_paths: list[Path], no_gui: bool, iters: int, fps: int,
 
                 # Agent takes an action based on the latest observation and info.
                 action = agent.take_action(state)
-
                 # The action is performed in the environment
                 state, reward, terminated, info = env.step(action)
 

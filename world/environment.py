@@ -9,7 +9,7 @@ from pathlib import Path
 from warnings import warn
 from time import time, sleep
 from datetime import datetime
-from world.helpers import save_results, action_to_direction
+from world.helpers import save_results, action_to_values, orientation_to_directions
 
 try:
     from agents import BaseAgent
@@ -41,7 +41,9 @@ class Environment:
                  agent_start_pos: tuple[int, int] = None,
                  reward_fn: callable = None,
                  target_fps: int = 30,
-                 random_seed: int | float | str | bytes | bytearray | None = 0):
+                 random_seed: int | float | str | bytes | bytearray | None = None,
+                 orientation = 0,
+                 target_positions=[None]):
         
         """Creates the Grid Environment for the Reinforcement Learning robot
         from the provided file.
@@ -94,6 +96,14 @@ class Environment:
             self.target_spf = 1. / target_fps
         self.gui = None
 
+        #initial speed
+        self.speed = 0
+
+        #initial orientation
+        self.orientation = orientation
+
+        self.target_positions = target_positions
+
     def _reset_info(self) -> dict:
         """Resets the info dictionary.
 
@@ -143,6 +153,28 @@ class Environment:
             idx = random.randint(0, len(zeros[0]) - 1)
             self.agent_pos = (zeros[0][idx], zeros[1][idx])
 
+    def _initialize_target_pos(self):
+
+        #reset targets
+        self.grid[self.grid == 3] = 0
+        for target in self.target_positions:
+            if target is not None:
+                pos = (target[0], target[1])
+                if self.grid[pos] == 0:
+                    # Cell is empty. We can place the target there.
+                    self.grid[pos] = 3
+                else:
+                    raise ValueError(
+                        "Attempted to place agent on top of obstacle, delivery"
+                        "location or charger")
+            else:
+                # No positions were given. We place agents randomly.
+                warn("No initial target positions given. Randomly placing targets "
+                     "on the grid.")
+                # Find all empty locations and choose one at random
+                zeros = np.where(self.grid == 0)
+                idx = random.randint(0, len(zeros[0]) - 1)
+                self.grid[(zeros[0][idx], zeros[1][idx])] = 3
 
     def reset(self, **kwargs) -> tuple[int, int]:
         """Reset the environment to an initial state.
@@ -173,6 +205,7 @@ class Environment:
         
         # Reset variables
         self.grid = Grid.load_grid(self.grid_fp).cells
+        self._initialize_target_pos()
         self._initialize_agent_pos()
         self.terminal_state = False
         self.info = self._reset_info()
@@ -185,9 +218,11 @@ class Environment:
         else:
             if self.gui is not None:
                 self.gui.close()
+
+        self.speed  = 0
+
         feature_vector = self._compute_features()
-        print(feature_vector, 'reset')
-        return self.agent_pos
+        return feature_vector
 
     def _move_agent(self, new_pos: tuple[int, int]):
         """Moves the agent, if possible and updates the 
@@ -205,6 +240,7 @@ class Environment:
             case 1 | 2:  # Moved to a wall or obstacle
                 self.world_stats["total_failed_moves"] += 1
                 self.info["agent_moved"] = False
+                self.speed = 0
                 pass
             case 3:  # Moved to a target tile
                 self.agent_pos = new_pos
@@ -229,7 +265,8 @@ class Environment:
         x, y = self.agent_pos
 
         # Steps to obstacle
-        def steps(delta_r, delta_c):
+        def steps(orientation):
+            delta_r, delta_c = orientation_to_directions(orientation)
             dist = 0
             sensor_x, sensor_y = x, y
             while self.grid[sensor_x, sensor_y] != 1 and self.grid[sensor_x, sensor_y] != 2:
@@ -238,20 +275,15 @@ class Environment:
                 dist += 1
             return dist
 
-        steps_up = steps(0,  -1)
-        steps_down = steps( 0,  1)
-        steps_left = steps( -1, 0)
-        steps_right = steps( 1,  0)
-        steps_down_left = steps(-1, 1)  # Down-left
-        steps_down_right = steps(1, 1)   # Down-right
-        steps_up_left = steps(-1, -1) # Up-Left
-        steps_up_right = steps(1, -1)  # Up-Right
+        steps_fw = steps(self.orientation)
+        steps_fw_left = steps((self.orientation-45)%360) # Up-Left
+        steps_fw_right = steps((self.orientation+45)%360)  # Up-Right
 
         # Distance to nearest target
         targets = np.argwhere(self.grid == 3)
         if targets.size == 0:
             # no targets left
-            dx = dy = None
+            dx = dy = 0
         else:
             # Manhattan distance
             dists = np.abs(targets - np.array([y, x])).sum(axis=1)
@@ -259,10 +291,27 @@ class Environment:
             target_x, target_y = targets[idx]
             dx, dy = target_x - x, target_y - y
         feature_vector = np.array([x, y,
-                                  steps_up, steps_down, steps_left, steps_right,
-                                  steps_down_left, steps_down_right, steps_up_left, steps_up_right,
-                                  dx, dy])
+                                   self.speed, self.orientation/360,
+                                   steps_fw, steps_fw_left, steps_fw_right,
+                                   dx, dy])
         return feature_vector
+
+    def _calc_new_position(self, action):
+        new_speed, sign_orientation = action_to_values(action)
+        if action == 0 or action == 1:
+            self.speed = new_speed
+
+        if self.speed == 1:
+            self.orientation = (self.orientation + sign_orientation*45) % 360
+            direction = orientation_to_directions(self.orientation)
+            new_position = (self.agent_pos[0] + direction[0], self.agent_pos[1] + direction[1])
+            return new_position
+        else:
+            self.orientation = (self.orientation + sign_orientation*45) % 360
+            new_position = self.agent_pos
+            return new_position
+
+
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool]:
         """This function makes the agent take a step on the grid.
@@ -297,7 +346,7 @@ class Environment:
                 # Otherwise, we render the current state only
                 paused_info = self._reset_info()
                 paused_info["agent_moved"] = True
-                self.gui.render(self.grid, self.agent_pos, paused_info,
+                self.gui.render(self.grid, self.agent_pos, self.orientation, paused_info,
                                 0, is_single_step)    
 
         # Add stochasticity into the agent action
@@ -309,8 +358,7 @@ class Environment:
         
         # Make the move
         self.info["actual_action"] = actual_action
-        direction = action_to_direction(actual_action)    
-        new_pos = (self.agent_pos[0] + direction[0], self.agent_pos[1] + direction[1])
+        new_pos = self._calc_new_position(actual_action)
 
         # Calculate the reward for the agent
         reward = self.reward_fn(self.grid, new_pos)
@@ -324,11 +372,10 @@ class Environment:
             time_to_wait = self.target_spf - (time() - start_time)
             if time_to_wait > 0:
                 sleep(time_to_wait)
-            self.gui.render(self.grid, self.agent_pos, self.info,
+            self.gui.render(self.grid, self.agent_pos, self.orientation, self.info,
                             reward, is_single_step)
         feature_vector = self._compute_features()
-        print(feature_vector)
-        return self.agent_pos, reward, self.terminal_state, self.info
+        return feature_vector, reward, self.terminal_state, self.info
 
     @staticmethod
     def _default_reward_function(grid, agent_pos) -> float:
@@ -349,11 +396,12 @@ class Environment:
         match grid[agent_pos]:
             case 0:  # Moved to an empty tile
                 reward = -1
-            case 1 | 2:  # Moved to a wall or obstacle
+            case 1:  # Moved to a wall
                 reward = -5
-                pass
+            case 2:  # Moved to a obstacle
+                reward = -10
             case 3:  # Moved to a target tile
-                reward = 10
+                reward = 100
                 # "Illegal move"
             case 5: # forbidden zone
                 reward = -5
