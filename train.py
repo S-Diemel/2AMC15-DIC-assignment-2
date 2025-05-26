@@ -35,7 +35,7 @@ def parse_args():
                         "no_gui is not set.")
     p.add_argument("--iter", type=int, default=1000,
                    help="Number of iterations to go through.")
-    p.add_argument("--random_seed", type=int, default=0,
+    p.add_argument("--random_seed", type=int, default=None,
                    help="Random seed value for the environment.")
     return p.parse_args()
 

@@ -7,7 +7,6 @@ def action_to_values(action):
         1: (0, 0),  # stop
         2: (0, -1),  # Left
         3: (0, 1),   # Right
-        4: (0, 0), # do nothing
     }
     return values[action]
 

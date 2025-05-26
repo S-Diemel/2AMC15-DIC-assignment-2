@@ -41,8 +41,9 @@ class Environment:
                  agent_start_pos: tuple[int, int] = None,
                  reward_fn: callable = None,
                  target_fps: int = 30,
-                 random_seed: int | float | str | bytes | bytearray | None = 0,
-                 orientation = 0):
+                 random_seed: int | float | str | bytes | bytearray | None = None,
+                 orientation = 0,
+                 target_positions=[None]):
         
         """Creates the Grid Environment for the Reinforcement Learning robot
         from the provided file.
@@ -100,6 +101,9 @@ class Environment:
 
         #initial orientation
         self.orientation = orientation
+
+        self.target_positions = target_positions
+
     def _reset_info(self) -> dict:
         """Resets the info dictionary.
 
@@ -149,6 +153,28 @@ class Environment:
             idx = random.randint(0, len(zeros[0]) - 1)
             self.agent_pos = (zeros[0][idx], zeros[1][idx])
 
+    def _initialize_target_pos(self):
+
+        #reset targets
+        self.grid[self.grid == 3] = 0
+        for target in self.target_positions:
+            if target is not None:
+                pos = (target[0], target[1])
+                if self.grid[pos] == 0:
+                    # Cell is empty. We can place the target there.
+                    self.grid[pos] = 3
+                else:
+                    raise ValueError(
+                        "Attempted to place agent on top of obstacle, delivery"
+                        "location or charger")
+            else:
+                # No positions were given. We place agents randomly.
+                warn("No initial target positions given. Randomly placing targets "
+                     "on the grid.")
+                # Find all empty locations and choose one at random
+                zeros = np.where(self.grid == 0)
+                idx = random.randint(0, len(zeros[0]) - 1)
+                self.grid[(zeros[0][idx], zeros[1][idx])] = 3
 
     def reset(self, **kwargs) -> tuple[int, int]:
         """Reset the environment to an initial state.
@@ -179,6 +205,7 @@ class Environment:
         
         # Reset variables
         self.grid = Grid.load_grid(self.grid_fp).cells
+        self._initialize_target_pos()
         self._initialize_agent_pos()
         self.terminal_state = False
         self.info = self._reset_info()
@@ -257,7 +284,7 @@ class Environment:
         targets = np.argwhere(self.grid == 3)
         if targets.size == 0:
             # no targets left
-            dx = dy = None
+            dx = dy = 0
         else:
             # Manhattan distance
             dists = np.abs(targets - np.array([y, x])).sum(axis=1)
