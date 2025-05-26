@@ -11,7 +11,7 @@ from agents import BaseAgent
 class GreedyAgent(BaseAgent):
     """Agent that performs a random action every time. """
     def update(self, state: tuple[int, int], reward: float, action):
-        time.sleep(1)
+        #time.sleep(1)
         pass
 
     def take_action(self, state: tuple[int, int]) -> int:

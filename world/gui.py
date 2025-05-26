@@ -160,25 +160,20 @@ class GUI:
         gfxdraw.aacircle(surface, cx, cy, outer_r, (0, 0, 102))
         gfxdraw.filled_circle(surface, cx, cy, outer_r, (0, 0, 102))
 
-        # convert orientation degrees to radians;
-        # define 0° as “up” and positive rotation clockwise
+        # convert orientation degrees to radians
         angle_rad = math.radians(agent_orientation)
 
-        # parameters for the yellow dot
-        dot_r = 4  # radius of the “nose” dot
-        # place it just inside the circle’s rim
-        dot_dist = outer_r - dot_r - 2
+        eye_r = int(outer_r * 0.25)   # radius of the eye
+        # place it on the circle edge
+        eye_dist = outer_r - eye_r - 2
 
-        # compute the dot’s position:
-        #   x offset = sin(angle) * distance
-        #   y offset = -cos(angle) * distance
-        # (pygame’s y-axis increases downward)
-        dot_x = cx + math.sin(angle_rad) * dot_dist
-        dot_y = cy - math.cos(angle_rad) * dot_dist
+        # compute the eye position:
+        dot_x = cx + math.sin(angle_rad) * eye_dist
+        dot_y = cy - math.cos(angle_rad) * eye_dist
 
-        # draw the yellow “nose” dot
-        gfxdraw.aacircle(surface, int(dot_x), int(dot_y), dot_r, (255, 255, 0))
-        gfxdraw.filled_circle(surface, int(dot_x), int(dot_y), dot_r, (255, 255, 0))
+        # draw the yellow eye
+        gfxdraw.aacircle(surface, int(dot_x), int(dot_y), eye_r, (255, 255, 0))
+        gfxdraw.filled_circle(surface, int(dot_x), int(dot_y), eye_r, (255, 255, 0))
 
     def _draw_info(self, surface) -> tuple[pygame.Rect, pygame.Rect]:
         """Draws the info panel on the surface.

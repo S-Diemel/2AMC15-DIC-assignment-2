@@ -349,8 +349,6 @@ class Environment:
             self.gui.render(self.grid, self.agent_pos, self.orientation, self.info,
                             reward, is_single_step)
         feature_vector = self._compute_features()
-        print(feature_vector)
-        print(action)
         return feature_vector, reward, self.terminal_state, self.info
 
     @staticmethod
