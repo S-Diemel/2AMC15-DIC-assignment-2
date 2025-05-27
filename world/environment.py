@@ -401,7 +401,7 @@ class Environment:
             case 2:  # Moved to a obstacle
                 reward = -10
             case 3:  # Moved to a target tile
-                reward = 100
+                reward = 1000
                 # "Illegal move"
             case 5: # forbidden zone
                 reward = -5

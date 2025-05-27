@@ -9,6 +9,7 @@ from tqdm import trange
 try:
     from world import Environment
     from agents.greedy_agent import GreedyAgent
+    from agents.dqn import DQNAgent
 except ModuleNotFoundError:
     from os import path
     from os import pardir
@@ -35,38 +36,58 @@ def parse_args():
                         "no_gui is not set.")
     p.add_argument("--iter", type=int, default=1000,
                    help="Number of iterations to go through.")
-    p.add_argument("--random_seed", type=int, default=None,
+    p.add_argument("--random_seed", type=int, default=0,
                    help="Random seed value for the environment.")
+    p.add_argument("--epsilon", type=float, default=1.0,
+                   help="Initial epsilon value for the epsilon-greedy policy.")
+    p.add_argument("--epsilon_min", type=float, default=0.01,
+                   help="Minimum epsilon value for the epsilon-greedy policy.")
+    p.add_argument("--epsilon_decay", type=float, default=0.995,
+                   help="Decay factor for the epsilon value in the epsilon-greedy policy.")
     return p.parse_args()
 
 
 def main(grid_paths: list[Path], no_gui: bool, iters: int, fps: int,
-         sigma: float, random_seed: int):
+         sigma: float, random_seed: int, epsilon: float,
+         epsilon_min: float, epsilon_decay: float):  
     """Main loop of the program."""
 
     for grid in grid_paths:
         
         # Set up the environment
         env = Environment(grid, no_gui, sigma=sigma, target_fps=fps,
-                          random_seed=random_seed)
+                          random_seed=random_seed, agent_start_pos=(1, 1), target_positions=[(1, 12)])
         
-        # Initialize agent
-        agent = GreedyAgent()
-        for _ in range(1):
-        # Always reset the environment to initial state
-            state = env.reset()
-            for _ in trange(iters):
+        # Initialize dqn agent
+        agent = DQNAgent(state_size=9, action_size=4, seed=random_seed)  # note we have set the state features and actions ourselves so hardcoded here
 
+        for episode in range(iters):
+            # Always reset the environment to initial state
+            # state = env.reset()
+
+            env_gui = episode % 100 == 0 and episode != 0
+            state = env.reset(no_gui=not env_gui)
+
+            # Decay epsilon (exploration rate)
+            epsilon = max(epsilon_min, epsilon_decay * epsilon)
+            agent.epsilon = epsilon
+
+            for i in trange(iters):
+                
                 # Agent takes an action based on the latest observation and info.
                 action = agent.take_action(state)
                 # The action is performed in the environment
-                state, reward, terminated, info = env.step(action)
+                next_state, reward, terminated, info = env.step(action)
 
                 # If the final state is reached, stop.
                 if terminated:
                     break
 
-                agent.update(state, reward, info["actual_action"])
+                terminated_by_reaching_target = info["target_reached"] or i == iters-1
+
+                agent.update(next_state, reward, info["actual_action"], terminated_by_reaching_target)
+
+                state = next_state
 
         # Evaluate the agent
         Environment.evaluate_agent(grid, agent, iters, sigma, random_seed=random_seed)
@@ -74,4 +95,4 @@ def main(grid_paths: list[Path], no_gui: bool, iters: int, fps: int,
 
 if __name__ == '__main__':
     args = parse_args()
-    main(args.GRID, args.no_gui, args.iter, args.fps, args.sigma, args.random_seed)
+    main(args.GRID, args.no_gui, args.iter, args.fps, args.sigma, args.random_seed, args.epsilon, args.epsilon_min, args.epsilon_decay)
