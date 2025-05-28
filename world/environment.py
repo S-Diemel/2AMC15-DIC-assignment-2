@@ -10,6 +10,7 @@ from warnings import warn
 from time import time, sleep
 from datetime import datetime
 from world.helpers import save_results, action_to_values, orientation_to_directions
+from world.spawning_rules import not_on_border
 
 try:
     from agents import BaseAgent
@@ -142,8 +143,7 @@ class Environment:
                 self.agent_pos = pos
             else:
                 raise ValueError(
-                    "Attempted to place agent on top of obstacle, delivery"
-                    "location or charger")
+                    "Attempted to place agent on top of obstacle, delivery location or charger")
         else:
             # No positions were given. We place agents randomly.
             warn("No initial agent positions given. Randomly placing agents "
@@ -176,6 +176,29 @@ class Environment:
                 idx = random.randint(0, len(zeros[0]) - 1)
                 self.grid[(zeros[0][idx], zeros[1][idx])] = 3
 
+    def _spawn_obstacles(self, n_obstacles: int, spawn_rule: callable = None):
+        """
+        Randomly place obstacles on the grid according to a rule.
+        Args:
+            n_obstacles: Number of obstacles to place.
+            spawn_rule: Function(grid, pos) -> bool, returns True if pos is valid.
+        """
+        # remove existing obstacles if coded into the default grid?
+        # then default obstacles can serve as test environment? 
+        self.grid[self.grid == 2] = 0
+
+        empty_cells = np.argwhere(self.grid == 0)
+        np.random.shuffle(empty_cells)
+        placed = 0
+
+        for pos in empty_cells:
+            pos_tuple = tuple(pos)
+            if spawn_rule is None or spawn_rule(self.grid, pos_tuple):
+                self.grid[pos_tuple] = 2  # Place obstacle
+                placed += 1
+                if placed >= n_obstacles:
+                    break
+
     def reset(self, **kwargs) -> tuple[int, int]:
         """Reset the environment to an initial state.
 
@@ -204,7 +227,9 @@ class Environment:
                                      f"keyword arguments.")
         
         # Reset variables
+        # TODO: add number of obstacles based on the grid size
         self.grid = Grid.load_grid(self.grid_fp).cells
+        self._spawn_obstacles(n_obstacles=10, spawn_rule=not_on_border)
         self._initialize_target_pos()
         self._initialize_agent_pos()
         self.terminal_state = False
