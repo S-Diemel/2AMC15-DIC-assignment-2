@@ -1,3 +1,0 @@
-Final Reward: [-2734.]
-Episode Length: 1000
-Terminated: False

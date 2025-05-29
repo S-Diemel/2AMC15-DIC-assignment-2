@@ -1,3 +1,0 @@
-Final Reward: [964.9]
-Episode Length: 24
-Terminated: True
