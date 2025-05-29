@@ -176,7 +176,7 @@ class Environment:
                 idx = random.randint(0, len(zeros[0]) - 1)
                 self.grid[(zeros[0][idx], zeros[1][idx])] = 3
 
-    def reset(self, **kwargs) -> tuple[int, int]:
+    def reset_env(self, **kwargs) -> tuple[int, int]:
         """Reset the environment to an initial state.
 
         You can fit it keyword arguments which will overwrite the 
@@ -199,6 +199,8 @@ class Environment:
                     self.no_gui = v
                 case "target_fps":
                     self.target_spf = 1. / v
+                case "seed":
+                    self.random_seed = v
                 case _:
                     raise ValueError(f"{k} is not one of the possible "
                                      f"keyword arguments.")
@@ -214,7 +216,7 @@ class Environment:
         # GUI specific code
         if not self.no_gui:
             self.gui = GUI(self.grid.shape)
-            self.gui.reset()
+            self.gui.reset_gui()
         else:
             if self.gui is not None:
                 self.gui.close()
@@ -447,7 +449,7 @@ class Environment:
                           target_fps=-1,
                           random_seed=random_seed)
         
-        state = env.reset()
+        state = env.reset_env()
         initial_grid = np.copy(env.grid)
 
         # Add initial agent position to the path

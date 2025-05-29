@@ -72,7 +72,7 @@ class GUI:
 
         self._initial_render()
 
-    def reset(self):
+    def reset_gui(self):
         """Called during the reset method of the environment."""
         self.stats = self._reset_stats()
         self._initial_render()
