@@ -362,22 +362,10 @@ class Environment:
         self.info["actual_action"] = actual_action
         new_pos = self._calc_new_position(actual_action)
 
-
-        gamma = 0.999  # TODO: link this to training procedure gamma
-        old_feature_vector = self._compute_features()
-        old_distance_to_target = -max(abs(old_feature_vector[-1]), abs(old_feature_vector[-2]))  # can also any distance measure but chebyshev is most logical here
-        # Negative chebyshev distance, because we can make diagonal moves and cost of diagonal move and straight move are the same
-        # Euclidean distance thinks of diagonal move as sqrt(2) times more 'expensive'
-        self._move_agent(new_pos)
-        feature_vector = self._compute_features()
-        new_distance_to_target = -max(abs(feature_vector[-1]), abs(feature_vector[-2]))  # negative manhatten distance
-        shaping_reward = gamma*new_distance_to_target - old_distance_to_target
-
         # Calculate the reward for the agent
         reward = self.reward_fn(self.grid, new_pos)
 
-        # Add the shaping reward to the reward
-        reward += shaping_reward
+        self._move_agent(new_pos)
         
         self.world_stats["cumulative_reward"] += reward
 
@@ -409,16 +397,16 @@ class Environment:
 
         match grid[agent_pos]:
             case 0:  # Moved to an empty tile
-                reward = -0.5
-            case 1:  # Moved to a wall
                 reward = -1
+            case 1:  # Moved to a wall
+                reward = -5
             case 2:  # Moved to a obstacle
-                reward = -2
+                reward = -10
             case 3:  # Moved to a target tile
-                reward = 20
+                reward = 1000
                 # "Illegal move"
             case 5: # forbidden zone
-                reward = -2
+                reward = -5
             case _:
                 raise ValueError(f"Grid cell should not have value: {grid[agent_pos]}.",
                                  f"at position {agent_pos}")

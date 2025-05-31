@@ -211,8 +211,8 @@ def parse_args():
                    help="Learning rate for DQN.")  # You can adjust as needed
     p.add_argument("--batch_size", type=int, default=32,
                    help="Batch size for DQN.")  # Typically smaller than PPO's
-    p.add_argument("--gamma", type=float, default=0.99,
-                   help="Discount factor.")  # Often 0.99 for DQN
+    p.add_argument("--gamma", type=float, default=0.999,
+                   help="Discount factor.")  # --> testing 0.999 instead of 0.99, to value sparse target reward more
     p.add_argument("--buffer_size", type=int, default=100_000,
                    help="Replay buffer size for DQN.")
     p.add_argument("--learning_starts", type=int, default=1_000,
