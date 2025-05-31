@@ -221,6 +221,9 @@ def parse_args():
                    help="Frequency (in env steps) to update the model.")
     p.add_argument("--target_update_interval", type=int, default=10_000,
                    help="Number of steps between target network updates.")
+    p.add_argument("--epsilon_decay_proportion", type=float, default=0.5, 
+                   help="Proportion of training to decay epsilon over. " \
+                   "0.5 means that halfway of the training procedure we the epsilon has reached in minimum value of 0.1.")
     return p.parse_args()
 
 def main(grid: list[Path],
@@ -236,7 +239,8 @@ def main(grid: list[Path],
          buffer_size: int,
          learning_starts: int,
          train_freq: int,
-         target_update_interval: int):
+         target_update_interval: int,
+         epsilon_decay_proportion: float):
     """Main loop of the program, now using DQN instead of PPO."""
     assert len(grid) == 1, "Provide exactly one grid for training"
     grid = grid[0]
@@ -301,10 +305,10 @@ def main(grid: list[Path],
         verbose=1,
         tensorboard_log=log_dir,
         seed=random_seed,
-        policy_kwargs={"net_arch": [64, 64]}  # Two hidden layers for simple MLP
+        policy_kwargs={"net_arch": [64, 64]},  # Two hidden layers for simple MLP
         exploration_initial_eps=1.0,  # initial epsilon value
         exploration_final_eps=0.1,  # final epsilon value
-        exploration_fraction=0.5  # means that in first half of training, epsilon will decay from 1.0 to 0.1
+        exploration_fraction=epsilon_decay_proportion  # means that in first half of training, epsilon will decay from 1.0 to 0.1
     )
 
     # Training
@@ -381,7 +385,8 @@ if __name__ == '__main__':
         buffer_size=args.buffer_size,
         learning_starts=args.learning_starts,
         train_freq=args.train_freq,
-        target_update_interval=args.target_update_interval
+        target_update_interval=args.target_update_interval,
+        epsilon_decay_proportion=args.epsilon_decay_proportion
     )
     # main(
     #     grid=[Path("2AMC15-DIC-assignment-2/grid_configs/A1_grid.npy")],   # Default GRID (nargs="+") must be provided as a list
