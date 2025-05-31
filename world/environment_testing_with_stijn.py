@@ -43,8 +43,7 @@ class Environment:
                  target_fps: int = 30,
                  random_seed: int | float | str | bytes | bytearray | None = None,
                  orientation = 0,
-                 target_positions=[None],
-                 local_patch_size: int = 3):
+                 target_positions=[None]):
         
         """Creates the Grid Environment for the Reinforcement Learning robot
         from the provided file.
@@ -102,8 +101,6 @@ class Environment:
 
         #initial orientation
         self.orientation = orientation
-
-        self.local_patch_size = local_patch_size
 
         self.target_positions = target_positions
 
@@ -261,62 +258,55 @@ class Environment:
                                  f"{new_pos}.")
 
     def _compute_features(self):
+        """From current self.agent_pos and self.grid, compute:
+           - steps to nearest obstacle in up/down/left/right
+           - dx, dy to nearest remaining target
+        """
         x, y = self.agent_pos
 
-        # 1. One-hot encode orientation (8 directions)
-        ori_idx = int((self.orientation // 45) % 8)
-        ori_onehot = np.eye(8, dtype=float)[ori_idx]
+        # Steps to obstacle
+        def steps(orientation):
+            delta_r, delta_c = orientation_to_directions(orientation)
+            dist = 0
+            sensor_x, sensor_y = x, y
+            sensor_x += delta_r
+            sensor_y += delta_c
+            if self.grid[sensor_x, sensor_y] == 1 or self.grid[sensor_x, sensor_y] == 2:
+                dist += 1
+            return dist
 
-        # 2. Extract local occupancy grid patch around agent
-        p = self.local_patch_size // 2
-        padded = np.pad(self.grid, pad_width=p, constant_values=1)
-        cx, cy = x + p, y + p
-        patch = padded[cx-p:cx+p+1, cy-p:cy+p+1].flatten().astype(float)
+        steps_fw = steps(self.orientation)
+        steps_fw_left = steps((self.orientation-90)%360) # Up-Left
+        steps_fw_right = steps((self.orientation+90)%360)  # Up-Right
 
-        # 3. Compute goal direction: normalized dx, dy + Euclidean distance
-        # Idea is that the normalized dx and dy are the direction towards the target
+        # Distance to nearest target
         targets = np.argwhere(self.grid == 3)
         if targets.size == 0:
-            dx_norm = dy_norm = dist = 0.0
+            # no targets left
+            dx = dy = 0
         else:
-            delta = targets - np.array([x, y])
-            dists = np.linalg.norm(delta, axis=1)
-            idx = np.argmin(dists)
-            dist = dists[idx]
-            dx, dy = delta[idx]
-            if dist > 0:
-                dx_norm = dx / dist
-                dy_norm = dy / dist
-            else:
-                dx_norm = dy_norm = 0.0
-
-        # 4. Build feature vector with [x, y, speed], orientation one-hot, patch, and [dx_norm, dy_norm, dist]
-        feature_vector = np.concatenate([
-            np.array([float(x), float(y), float(self.speed)]),
-            ori_onehot,
-            patch,
-            np.array([dx_norm, dy_norm, dist], dtype=float)
-        ])
-
+            # Manhattan distance
+            dists = np.abs(targets - np.array([y, x])).sum(axis=1)
+            idx   = np.argmin(dists)
+            target_x, target_y = targets[idx]
+            dx, dy = target_x - x, target_y - y
+        feature_vector = np.array([x, y,
+                                   self.orientation/90,
+                                   steps_fw, steps_fw_left, steps_fw_right,
+                                   dx, dy])
         return feature_vector
-
 
     def _calc_new_position(self, action):
         new_speed, sign_orientation = action_to_values(action)
-        if action == 0 or action == 1:
-            self.speed = new_speed
 
-        if self.speed == 1:
-            self.orientation = (self.orientation + sign_orientation*45) % 360
+        if action == 0:
             direction = orientation_to_directions(self.orientation)
             new_position = (self.agent_pos[0] + direction[0], self.agent_pos[1] + direction[1])
             return new_position
         else:
-            self.orientation = (self.orientation + sign_orientation*45) % 360
+            self.orientation = (self.orientation + sign_orientation*90) % 360
             new_position = self.agent_pos
             return new_position
-
-
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool]:
         """This function makes the agent take a step on the grid.
@@ -359,21 +349,25 @@ class Environment:
         if val > self.sigma:
             actual_action = action
         else:
-            actual_action = random.randint(0, 3)
+            actual_action = random.randint(0, 2)
         
         # Make the move
         self.info["actual_action"] = actual_action
         new_pos = self._calc_new_position(actual_action)
 
-        gamma = 0.99  # TODO: link this to training procedure gamma
-        euclidean_distance_old = -self._compute_features()[-1] 
+        # gamma = 0.99  # TODO: link this to training procedure gamma
+        old_feature_vector = self._compute_features()
+        # old_distance_to_target = -np.sqrt(old_feature_vector[-1]**2 + old_feature_vector[-2]**2)  # negative euclidean distance
+        old_distance_to_target = np.sqrt(old_feature_vector[-1]**2 + old_feature_vector[-2]**2)  # euclidean distance
         self._move_agent(new_pos)
-        euclidean_distance_new = -self._compute_features()[-1] 
-        shaping_reward = gamma*euclidean_distance_new - euclidean_distance_old
+        feature_vector = self._compute_features()
+        # new_distance_to_target = -np.sqrt(feature_vector[-1]**2 + feature_vector[-2]**2)  # negative euclidean distance
+        new_distance_to_target = np.sqrt(feature_vector[-1]**2 + feature_vector[-2]**2)  # euclidean distance
+        # shaping_reward = gamma*new_distance_to_target - old_distance_to_target
+        shaping_reward = old_distance_to_target - new_distance_to_target
 
         # Calculate the reward for the agent
-        reward = self.reward_fn(self.grid, new_pos)
-        reward += shaping_reward
+        reward = self._improved_reward_function(self.grid, new_pos, shaping_reward)
         
         self.world_stats["cumulative_reward"] += reward
 
@@ -384,7 +378,7 @@ class Environment:
                 sleep(time_to_wait)
             self.gui.render(self.grid, self.agent_pos, self.orientation, self.info,
                             reward, is_single_step)
-        feature_vector = self._compute_features()
+        # feature_vector = self._compute_features()
         return feature_vector, reward, self.terminal_state, self.info
 
     @staticmethod
@@ -405,19 +399,89 @@ class Environment:
 
         match grid[agent_pos]:
             case 0:  # Moved to an empty tile
-                reward = -0.1
-            case 1:  # Moved to a wall
                 reward = -1
+            case 1:  # Moved to a wall
+                reward = -5
             case 2:  # Moved to a obstacle
-                reward = -2
+                reward = -10
             case 3:  # Moved to a target tile
-                reward = 10
+                reward = 1000
                 # "Illegal move"
             case 5: # forbidden zone
-                reward = -2
+                reward = -5
             case _:
                 raise ValueError(f"Grid cell should not have value: {grid[agent_pos]}.",
                                  f"at position {agent_pos}")
+        return reward
+    
+    # @staticmethod
+    # def _improved_reward_function(grid, agent_pos, shaping_reward) -> float:
+    #     """This is a very simple reward function. Feel free to adjust it.
+    #     Any custom reward function must also follow the same signature, meaning
+    #     it must be written like `reward_name(grid, temp_agent_pos)`.
+
+    #     Args:
+    #         grid: The grid the agent is moving on, in case that is needed by
+    #             the reward function.
+    #         agent_pos: The position the agent is moving to.
+
+    #     Returns:
+    #         A single floating point value representing the reward for a given
+    #         action.
+    #     """
+
+    #     match grid[agent_pos]:
+    #         case 0:  # Moved to an empty tile
+    #             reward = -0.5
+    #         case 1:  # Moved to a wall
+    #             reward = -2
+    #         case 2:  # Moved to a obstacle
+    #             reward = -2
+    #         case 3:  # Moved to a target tile
+    #             reward = 100
+    #             # "Illegal move"
+    #         case 5: # forbidden zone
+    #             reward = -5
+    #         case _:
+    #             raise ValueError(f"Grid cell should not have value: {grid[agent_pos]}.",
+    #                              f"at position {agent_pos}")
+    #     # Add a shaping reward based on the distance to the target
+    #     reward += shaping_reward
+    #     return reward
+    
+    @staticmethod
+    def _improved_reward_function(grid, agent_pos, shaping_reward) -> float:
+        """This is a very simple reward function. Feel free to adjust it.
+        Any custom reward function must also follow the same signature, meaning
+        it must be written like `reward_name(grid, temp_agent_pos)`.
+
+        Args:
+            grid: The grid the agent is moving on, in case that is needed by
+                the reward function.
+            agent_pos: The position the agent is moving to.
+
+        Returns:
+            A single floating point value representing the reward for a given
+            action.
+        """
+
+        match grid[agent_pos]:  # based on 1000 iters
+            case 0:  # Moved to an empty tile
+                reward = -0.001
+            case 1:  # Moved to a wall
+                reward = -0.0025
+            case 2:  # Moved to a obstacle
+                reward = -0.0025
+            case 3:  # Moved to a target tile
+                reward = 1
+                # "Illegal move"
+            case 5: # forbidden zone
+                reward = -0.005
+            case _:
+                raise ValueError(f"Grid cell should not have value: {grid[agent_pos]}.",
+                                 f"at position {agent_pos}")
+        # Add a shaping reward based on the distance to the target
+        reward += shaping_reward / 100
         return reward
 
     @staticmethod

@@ -44,9 +44,9 @@ def evaluate(model_path: Path, grid_path: Path,
                           seed=random_seed)
     # Run evaluation
     # Basic evaluation
-    Environment.evaluate_agent(grid_path, agent, iters, sigma, random_seed=random_seed)
+    # Environment.evaluate_agent(grid_path, agent, iters, sigma, random_seed=random_seed)
     # Own evaluation function
-    returns, success_rate = full_evaluation(env, agent, n_episodes=100, max_steps=iters)
+    returns, success_rate = full_evaluation(env, agent, n_episodes=10, max_steps=iters)
     return returns, success_rate
 
 

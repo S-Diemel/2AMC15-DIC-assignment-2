@@ -72,7 +72,7 @@ class DQNAgent(BaseAgent):
         gamma: float = 0.99,
         lr: float = 2.5e-4,
         # tau no longer needed for hard updates
-        target_update_every: int = 1000,  # 1000 more usual, but since small space, likely fine
+        target_update_every: int = 10000,  # 1000 more usual, but since small space, likely fine
         update_every: int = 4,
         epsilon_start: float = 1.0,
     ):
