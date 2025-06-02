@@ -54,32 +54,33 @@ class PPO:
 
         self.optimizer = optim.Adam(self.policy.parameters(), lr=lr)
         self.mse_loss = nn.MSELoss()
+        self.memory = Memory()
 
-    def select_action(self, state, memory):
+    def take_action(self, state):
         state = torch.FloatTensor(state).unsqueeze(0).to(device)
         probs, value = self.policy_old(state)
         dist = Categorical(probs)
         action = dist.sample()
 
-        memory.states.append(state)
-        memory.actions.append(action)
-        memory.logprobs.append(dist.log_prob(action))
-        memory.values.append(value)
+        self.memory.states.append(state)
+        self.memory.actions.append(action)
+        self.memory.logprobs.append(dist.log_prob(action))
+        self.memory.values.append(value)
 
         return action.item()
 
-    def update(self, memory):
+    def update(self):
         # Convert memory to tensors
-        states = torch.cat(memory.states).to(device)
-        actions = torch.stack(memory.actions).to(device)
-        old_logprobs = torch.stack(memory.logprobs).to(device)
-        values = torch.cat(memory.values).squeeze().detach().cpu().numpy()
-        rewards = memory.rewards
-        dones = memory.dones
+        states = torch.cat(self.memory.states).to(device)
+        actions = torch.stack(self.memory.actions).to(device)
+        old_logprobs = torch.stack(self.memory.logprobs).to(device)
+        values = torch.cat(self.memory.values).squeeze().detach().cpu().numpy()
+        rewards = self.memory.rewards
+        dones = self.memory.dones
 
         # Compute next value for bootstrapping
         with torch.no_grad():
-            next_state = memory.states[-1]
+            next_state = self.memory.states[-1]
             _, next_value = self.policy_old(next_state)
             next_value = next_value.item()
 
@@ -109,7 +110,16 @@ class PPO:
             self.optimizer.step()
 
         self.policy_old.load_state_dict(self.policy.state_dict())
-        memory.clear()
+        self.memory.clear()
+
+    def save(self, path: str):
+        """Save the policy network to disk."""
+        torch.save(self.policy.state_dict(), path)
+
+    def load(self, path: str):
+        """Load the policy network from disk."""
+        self.policy.load_state_dict(torch.load(path))
+        self.policy_old.load_state_dict(self.policy.state_dict())  # sync old policy
 
 class Memory:
     def __init__(self):

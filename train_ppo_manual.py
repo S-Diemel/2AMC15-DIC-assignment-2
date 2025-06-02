@@ -66,7 +66,6 @@ def main(grid: list[Path], no_gui: bool, episodes: int, iters: int, fps: int,
 
     # Initialize dqn agent
     agent = ppo.PPO(state_dim=9, action_dim=4)
-    memory = ppo.Memory()
 
     for episode in range(episodes):
         print(f"Episode {episode + 1}/{episodes} - Epsilon: {epsilon:.4f}")
@@ -76,18 +75,18 @@ def main(grid: list[Path], no_gui: bool, episodes: int, iters: int, fps: int,
         # env_gui = episode % 100 == 0 and episode != 0
         env_gui = False
         state = env.reset_env(no_gui=not env_gui)
-        memory.clear()
+        agent.memory.clear()
         total_reward = 0
 
         for i in trange(iters):
 
             # Agent takes an action based on the latest observation and info.
-            action = agent.select_action(state, memory)
+            action = agent.take_action(state)
             # The action is performed in the environment
             next_state, reward, terminated, info = env.step(action)
 
-            memory.rewards.append(reward)
-            memory.dones.append(terminated)
+            agent.memory.rewards.append(reward)
+            agent.memory.dones.append(terminated)
             total_reward += reward
             state = next_state
 
@@ -95,11 +94,11 @@ def main(grid: list[Path], no_gui: bool, episodes: int, iters: int, fps: int,
             if terminated:
                 break
 
-        agent.update(memory)
+        agent.update()
 
     grid_name = grid.stem  # Get the grid name from the path
     # after all episodes for this grid
-    model_path = f"models/dqn_{grid_name}_test.pth"
+    model_path = f"models/ppo_{grid_name}_test.pth"
     agent.save(model_path)
     print(f"Saved trained model to -> {model_path}")
 
