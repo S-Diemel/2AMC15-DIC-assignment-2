@@ -43,7 +43,8 @@ class Environment:
                  target_fps: int = 30,
                  random_seed: int | float | str | bytes | bytearray | None = None,
                  orientation = 0,
-                 target_positions=[None]):
+                 target_positions=[None],
+                 local_patch_size: int = 3):
         
         """Creates the Grid Environment for the Reinforcement Learning robot
         from the provided file.
@@ -101,6 +102,8 @@ class Environment:
 
         #initial orientation
         self.orientation = orientation
+
+        self.local_patch_size = local_patch_size
 
         self.target_positions = target_positions
 
@@ -199,8 +202,6 @@ class Environment:
                     self.no_gui = v
                 case "target_fps":
                     self.target_spf = 1. / v
-                case "seed":
-                    self.random_seed = v
                 case _:
                     raise ValueError(f"{k} is not one of the possible "
                                      f"keyword arguments.")
@@ -260,43 +261,45 @@ class Environment:
                                  f"{new_pos}.")
 
     def _compute_features(self):
-        """From current self.agent_pos and self.grid, compute:
-           - steps to nearest obstacle in up/down/left/right
-           - dx, dy to nearest remaining target
-        """
         x, y = self.agent_pos
 
-        # Steps to obstacle
-        def steps(orientation):
-            delta_r, delta_c = orientation_to_directions(orientation)
-            dist = 0
-            sensor_x, sensor_y = x, y
-            while self.grid[sensor_x, sensor_y] != 1 and self.grid[sensor_x, sensor_y] != 2:
-                sensor_x += delta_r
-                sensor_y += delta_c
-                dist += 1
-            return dist
+        # 1. One-hot encode orientation (8 directions)
+        ori_idx = int((self.orientation // 45) % 8)
+        ori_onehot = np.eye(8, dtype=float)[ori_idx]
 
-        steps_fw = steps(self.orientation)
-        steps_fw_left = steps((self.orientation-45)%360) # Up-Left
-        steps_fw_right = steps((self.orientation+45)%360)  # Up-Right
+        # 2. Extract local occupancy grid patch around agent
+        p = self.local_patch_size // 2
+        padded = np.pad(self.grid, pad_width=p, constant_values=1)
+        cx, cy = x + p, y + p
+        patch = padded[cx-p:cx+p+1, cy-p:cy+p+1].flatten().astype(float)
 
-        # Distance to nearest target
+        # 3. Compute goal direction: normalized dx, dy + Euclidean distance
+        # Idea is that the normalized dx and dy are the direction towards the target
         targets = np.argwhere(self.grid == 3)
         if targets.size == 0:
-            # no targets left
-            dx = dy = 0
+            dx_norm = dy_norm = dist = 0.0
         else:
-            # Manhattan distance
-            dists = np.abs(targets - np.array([y, x])).sum(axis=1)
-            idx   = np.argmin(dists)
-            target_x, target_y = targets[idx]
-            dx, dy = target_x - x, target_y - y
-        feature_vector = np.array([x, y,
-                                   self.speed, self.orientation/360,
-                                   steps_fw, steps_fw_left, steps_fw_right,
-                                   dx, dy])
+            delta = targets - np.array([x, y])
+            dists = np.linalg.norm(delta, axis=1)
+            idx = np.argmin(dists)
+            dist = dists[idx]
+            dx, dy = delta[idx]
+            if dist > 0:
+                dx_norm = dx / dist
+                dy_norm = dy / dist
+            else:
+                dx_norm = dy_norm = 0.0
+
+        # 4. Build feature vector with [x, y, speed], orientation one-hot, patch, and [dx_norm, dy_norm, dist]
+        feature_vector = np.concatenate([
+            np.array([float(x), float(y), float(self.speed)]),
+            ori_onehot,
+            patch,
+            np.array([dx_norm, dy_norm, dist], dtype=float)
+        ])
+
         return feature_vector
+
 
     def _calc_new_position(self, action):
         new_speed, sign_orientation = action_to_values(action)
@@ -362,21 +365,14 @@ class Environment:
         self.info["actual_action"] = actual_action
         new_pos = self._calc_new_position(actual_action)
 
-
         gamma = 0.99  # TODO: link this to training procedure gamma
-        old_feature_vector = self._compute_features()
-        old_distance_to_target = -max(abs(old_feature_vector[-1]), abs(old_feature_vector[-2]))  # can also any distance measure but chebyshev is most logical here
-        # Negative chebyshev distance, because we can make diagonal moves and cost of diagonal move and straight move are the same
-        # Euclidean distance thinks of diagonal move as sqrt(2) times more 'expensive'
+        euclidean_distance_old = -self._compute_features()[-1] 
         self._move_agent(new_pos)
-        feature_vector = self._compute_features()
-        new_distance_to_target = -max(abs(feature_vector[-1]), abs(feature_vector[-2]))  # negative chebyshev distance
-        shaping_reward = gamma*new_distance_to_target - old_distance_to_target
+        euclidean_distance_new = -self._compute_features()[-1] 
+        shaping_reward = gamma*euclidean_distance_new - euclidean_distance_old
 
         # Calculate the reward for the agent
         reward = self.reward_fn(self.grid, new_pos)
-
-        # Add the shaping reward to the reward
         reward += shaping_reward
         
         self.world_stats["cumulative_reward"] += reward
@@ -409,13 +405,13 @@ class Environment:
 
         match grid[agent_pos]:
             case 0:  # Moved to an empty tile
-                reward = -0.5
+                reward = -0.1
             case 1:  # Moved to a wall
                 reward = -1
             case 2:  # Moved to a obstacle
                 reward = -2
             case 3:  # Moved to a target tile
-                reward = 20
+                reward = 10
                 # "Illegal move"
             case 5: # forbidden zone
                 reward = -2

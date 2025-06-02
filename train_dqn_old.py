@@ -72,7 +72,7 @@ def main(grid: list[Path], no_gui: bool, episodes: int, iters: int, fps: int,
         env_gui = episode % 100 == 0 and episode != 0
         # env_gui = False
         state = env.reset(no_gui=not env_gui)
-        
+
         # Decay epsilon (exploration rate)
         epsilon = max(epsilon_min, epsilon_decay * epsilon)
         agent.epsilon = epsilon
@@ -91,7 +91,7 @@ def main(grid: list[Path], no_gui: bool, episodes: int, iters: int, fps: int,
             # termination_flag = terminated
             
             # Note that there is a difference between action and info["actual_action"], sometimes stochasticity in environment, causes an other action (the "actual actino") to be performed.
-            agent.update(state, info["actual_action"], reward, next_state, termination_flag)
+            agent.update(state, info["actual_action"], reward, termination_flag)
 
             state = next_state
 

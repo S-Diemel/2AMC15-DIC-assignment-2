@@ -75,10 +75,9 @@ class DQNAgent(BaseAgent):
         gamma: float = 0.99,
         lr: float = 2.5e-4,
         # tau no longer needed for hard updates
-        target_update_every: int = 1000,  # 10000 more usual, but since small space, likely fine
+        target_update_every: int = 1000,  # 1000 more usual, but since small space, likely fine
         update_every: int = 4,
         epsilon_start: float = 1.0,
-        warmup_start_steps: int = 1000,
     ):
         super(DQNAgent, self).__init__()
         set_all_seeds(seed)
@@ -101,10 +100,14 @@ class DQNAgent(BaseAgent):
         # Replay memory
         self.memory = ReplayBuffer(buffer_size, batch_size, seed)
         self.t_step = 0
-        self.warmup_start_steps = warmup_start_steps
 
         # Epsilon for epsilon-greedy
         self.epsilon = epsilon_start
+
+        # Important to keep track of previous state and action in update method
+        # Initialized with None, because when we do not have a previous state and action yet, the transition is incomplete.
+        self.prev_state = None
+        self.prev_action = None
 
     def _device(self):
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -126,7 +129,7 @@ class DQNAgent(BaseAgent):
         else:
             return random.choice(np.arange(self.action_size))
 
-    def update(self, state, action, reward, next_state, terminated):
+    def update(self, state, reward, action, terminated_by_reaching_target):
         """
         This method should be called AFTER each step in the environment
         to store transitions and potentially trigger learning.
@@ -136,15 +139,23 @@ class DQNAgent(BaseAgent):
             reward: float reward from the environment
             action: int action that was taken
         """        
+        # Make sure that we add the initial state and action
+        if self.prev_state is None:
+            self.prev_state = state
+            self.prev_action = action
+            return  # This return statement makes sure we do not add an incomplete transition to the memory
+
         # TODO: do we terminate only after reaching target or also after episode reaches limit?
-        done = terminated
+        done = terminated_by_reaching_target
 
         # Add to replay buffer
-        self.memory.add(state, action, reward, next_state, done)
+        self.memory.add(self.prev_state, self.prev_action, reward, state, done)
+        self.prev_state = state
+        self.prev_action = action
 
         # Learn every update_every time steps
         self.t_step = (self.t_step + 1) % self.update_every
-        if self.t_step == 0 and len(self.memory) >= self.warmup_start_steps:  
+        if self.t_step == 0 and len(self.memory) >= self.batch_size:  
             # start learning weights when memory contains enough samples to sample a batch
             experiences = self.memory.sample()
             self.learn(experiences)
@@ -175,11 +186,6 @@ class DQNAgent(BaseAgent):
 
         # Compute loss
         loss = nn.MSELoss()(Q_expected, Q_targets)
-
-        # Tracking the loss a little bit:
-        # if self.learn_steps % 500 == 0:
-        #     print(f"Step {self.learn_steps} - Q-loss = {loss.item():.4f}")
-
         # Minimize the loss
         self.optimizer.zero_grad()
         loss.backward()
