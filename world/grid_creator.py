@@ -117,5 +117,5 @@ def build_grid():
 
 
 if __name__ == '__main__':
-    #socket_io.run(app, debug=False, allow_unsafe_werkzeug=True)
+    # socket_io.run(app, debug=False, allow_unsafe_werkzeug=True)
     app.run(host="0.0.0.0", port=8000, debug=False)

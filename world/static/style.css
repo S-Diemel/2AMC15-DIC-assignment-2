@@ -8,6 +8,10 @@
     grid-gap: 2px;
     border: 2px solid lightgray;
     background: lightgray;
+    background-image: url('/static/backgrounds/fishbone-warehouse.webp');
+    background-size: contain; /* or 'contain' depending on your preference */
+    background-repeat: no-repeat;
+    background-position: center;
 }
 
 .cell_obstacle {
