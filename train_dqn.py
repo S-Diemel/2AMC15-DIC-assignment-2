@@ -44,14 +44,15 @@ def parse_args():
                    help="Initial epsilon value for the epsilon-greedy policy.")
     p.add_argument("--epsilon_min", type=float, default=0.01,
                    help="Minimum epsilon value for the epsilon-greedy policy.")
-    p.add_argument("--epsilon_decay", type=float, default=0.995,  # Value 0.9985 for 3500 episodes. 
-                   help="Decay factor for the epsilon value in the epsilon-greedy policy.")
+    p.add_argument("--epsilon_decay_proportion", type=float, default=0.5, 
+                   help="Proportion of training to decay epsilon over. " \
+                   "0.5 means that halfway of the training procedure we the epsilon has reached in minimum value of 0.1.")
     return p.parse_args()
 
 
 def main(grid: list[Path], no_gui: bool, episodes: int, iters: int, fps: int,
          sigma: float, random_seed: int, epsilon: float,
-         epsilon_min: float, epsilon_decay: float):  
+         epsilon_min: float, epsilon_decay_proportion: float):  
     """Main loop of the program."""
 
     assert len(grid) == 1, "Provide exactly one grid for training"
@@ -59,10 +60,13 @@ def main(grid: list[Path], no_gui: bool, episodes: int, iters: int, fps: int,
         
     # Set up the environment
     env = Environment(grid, no_gui, sigma=sigma, target_fps=fps,
-                        random_seed=random_seed)#, agent_start_pos=(1, 1), target_positions=[(1, 12)])
+                        random_seed=random_seed)  # , agent_start_pos=(1, 1), target_positions=[(1, 12)])
     
     # Initialize dqn agent
     agent = DQNAgent(state_size=10, action_size=4, seed=random_seed)  # note we have set the state features and actions ourselves so hardcoded here
+
+    # Number of episodes to decay the epsilon linearly
+    decay_episodes = int(epsilon_decay_proportion * episodes)
 
     for episode in range(episodes):
         print(f"Episode {episode + 1}/{episodes} - Epsilon: {epsilon:.4f}")
@@ -72,10 +76,6 @@ def main(grid: list[Path], no_gui: bool, episodes: int, iters: int, fps: int,
         env_gui = episode % 100 == 0 and episode != 0
         # env_gui = False
         state = env.reset_env(no_gui=not env_gui)
-        
-        # Decay epsilon (exploration rate)
-        epsilon = max(epsilon_min, epsilon_decay * epsilon)
-        agent.epsilon = epsilon
 
         for i in trange(iters):
             
@@ -98,13 +98,25 @@ def main(grid: list[Path], no_gui: bool, episodes: int, iters: int, fps: int,
             # If the final state is reached, stop. But before stopping, we want to incorportate the reward in the Q-value update.
             if terminated:
                 break
+        
+        # Decay epsilon (exploration rate)
+        if episode < decay_episodes:
+            frac = episode / decay_episodes
+            epsilon = args.epsilon - frac * (args.epsilon - args.epsilon_min)
+        else:
+            epsilon = args.epsilon_min
+
+        # Update the agent's epsilon    
+        agent.epsilon = epsilon
 
     grid_name = grid.stem # Get the grid name from the path
-    agent.epsilon = 0 # for evaluation
     # after all episodes for this grid
     model_path = f"models/dqn_{grid_name}_test.pth"
     agent.save(model_path)
     print(f"Saved trained model to -> {model_path}")
+
+    agent.epsilon = 0  # Set epsilon to 0 for evaluation
+    # Evaluate the agent
     for i in range(5):
         # Evaluate the agent
         Environment.evaluate_agent(grid, agent, iters, sigma, random_seed=None)#, agent_start_pos=(1, 1), target_positions=[(1, 12)])
@@ -112,4 +124,4 @@ def main(grid: list[Path], no_gui: bool, episodes: int, iters: int, fps: int,
 
 if __name__ == '__main__':
     args = parse_args()
-    main(args.GRID, args.no_gui, args.episodes, args.iter, args.fps, args.sigma, args.random_seed, args.epsilon, args.epsilon_min, args.epsilon_decay)
+    main(args.GRID, args.no_gui, args.episodes, args.iter, args.fps, args.sigma, args.random_seed, args.epsilon, args.epsilon_min, args.epsilon_decay_proportion)
