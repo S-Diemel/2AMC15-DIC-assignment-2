@@ -188,7 +188,7 @@ class DQNAgent(BaseAgent):
         # Hard update target network every self.target_update_every steps
         self.learn_steps += 1
         if self.learn_steps % self.target_update_every == 0:
-            print("Target network is updated")
+            #print("Target network is updated")
             self.qnetwork_target.load_state_dict(self.qnetwork_local.state_dict())
 
     def save(self, path: str):

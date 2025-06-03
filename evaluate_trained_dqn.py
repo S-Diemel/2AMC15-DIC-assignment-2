@@ -1,6 +1,6 @@
 import torch
 from pathlib import Path
-from world import Environment
+from world.environment_dqn import Environment
 from agents.dqn import DQNAgent
 
 
@@ -9,7 +9,7 @@ def full_evaluation(env, agent, n_episodes=10, max_steps=1000):
     returns = []
     successes = 0
     for _ in range(n_episodes):
-        state = env.reset(no_gui=True)
+        state = env.reset_env(no_gui=False)
         total_r = 0
         for t in range(max_steps):
             action = agent.take_action(state)
@@ -32,21 +32,20 @@ def evaluate(model_path: Path, grid_path: Path,
              iters: int = 1000, sigma: float = 0.0,
              random_seed: int = 0):
     # Load your environment
-    env = Environment(grid_path, no_gui=True, sigma=sigma,
-                      random_seed=random_seed,
-                      agent_start_pos=(1,1),
-                      target_positions=[(1,12)])
+    env = Environment(grid_path, no_gui=False, sigma=sigma,
+                      random_seed=None)
     # Load agent
     # NOTE: Must pass the same state_size and action_size used in training
     agent = DQNAgent.load(str(model_path),
-                          state_size=9,
+                          state_size=10,
                           action_size=4,
                           seed=random_seed)
+    agent.epsilon=0 # for evaluation
     # Run evaluation
     # Basic evaluation
-    Environment.evaluate_agent(grid_path, agent, iters, sigma, random_seed=random_seed)
+    Environment.evaluate_agent(grid_path, agent, iters, sigma, random_seed=None)
     # Own evaluation function
-    returns, success_rate = full_evaluation(env, agent, n_episodes=100, max_steps=iters)
+    returns, success_rate = full_evaluation(env, agent, n_episodes=10, max_steps=iters)
     return returns, success_rate
 
 

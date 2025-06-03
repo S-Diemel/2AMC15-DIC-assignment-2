@@ -152,6 +152,7 @@ class Environment:
             zeros = np.where(self.grid == 0)
             idx = random.randint(0, len(zeros[0]) - 1)
             self.agent_pos = (zeros[0][idx], zeros[1][idx])
+            self.old_agent_pos = self.agent_pos
 
     def _initialize_target_pos(self):
 
@@ -173,8 +174,16 @@ class Environment:
                      "on the grid.")
                 # Find all empty locations and choose one at random
                 zeros = np.where(self.grid == 0)
-                idx = random.randint(0, len(zeros[0]) - 1)
-                self.grid[(zeros[0][idx], zeros[1][idx])] = 3
+                x_start, y_start = self.agent_pos
+                while True:
+                    idx = random.randint(0, len(zeros[0]) - 1)
+                    x_target, y_target = zeros[0][idx], zeros[1][idx]
+
+                    manhattan_distance = abs(x_target - x_start) + abs(y_target - y_start)
+                    if manhattan_distance >= int(self.grid.shape[0]/2):
+                        break  # Valid target found
+
+                self.grid[(x_target, y_target)] = 3
 
     def reset_env(self, **kwargs) -> tuple[int, int]:
         """Reset the environment to an initial state.
@@ -207,8 +216,8 @@ class Environment:
         
         # Reset variables
         self.grid = Grid.load_grid(self.grid_fp).cells
-        self._initialize_target_pos()
         self._initialize_agent_pos()
+        self._initialize_target_pos()
         self.terminal_state = False
         self.info = self._reset_info()
         self.world_stats = self._reset_world_stats()
@@ -236,6 +245,7 @@ class Environment:
 
         match self.grid[new_pos]:
             case 0 | 5:  # Moved to an empty tile or forbidden tile
+                self.old_agent_pos = self.agent_pos
                 self.agent_pos = new_pos
                 self.info["agent_moved"] = True
                 self.world_stats["total_agent_moves"] += 1
@@ -245,6 +255,7 @@ class Environment:
                 self.speed = 0
                 pass
             case 3:  # Moved to a target tile
+                self.old_agent_pos = self.agent_pos
                 self.agent_pos = new_pos
                 self.grid[new_pos] = 0
                 if np.sum(self.grid == 3) == 0:
@@ -278,8 +289,8 @@ class Environment:
             return dist
 
         steps_fw = steps(self.orientation)
-        steps_fw_left = steps((self.orientation-45)%360) # Up-Left
-        steps_fw_right = steps((self.orientation+45)%360)  # Up-Right
+        steps_fw_left = steps((self.orientation-90)%360) # Up-Left
+        steps_fw_right = steps((self.orientation+90)%360)  # Up-Right
 
         # Distance to nearest target
         targets = np.argwhere(self.grid == 3)
@@ -292,10 +303,22 @@ class Environment:
             idx   = np.argmin(dists)
             target_x, target_y = targets[idx]
             dx, dy = target_x - x, target_y - y
-        feature_vector = np.array([x, y,
-                                   self.speed, self.orientation/360,
+
+        def check_facing_target(orientation):
+            delta_r, delta_c = orientation_to_directions(orientation)
+            sensor_x, sensor_y = x, y
+            while self.grid[sensor_x, sensor_y] != 1 and self.grid[sensor_x, sensor_y] != 2:
+                sensor_x += delta_r
+                sensor_y += delta_c
+                if self.grid[sensor_x, sensor_y] == 3:
+                    return 1
+            return 0
+
+        face_target = check_facing_target(self.orientation)
+
+        feature_vector = np.array([x, y, self.speed, self.orientation/90,
                                    steps_fw, steps_fw_left, steps_fw_right,
-                                   dx, dy])
+                                   dx, dy, face_target])
         return feature_vector
 
     def _calc_new_position(self, action):
@@ -304,12 +327,12 @@ class Environment:
             self.speed = new_speed
 
         if self.speed == 1:
-            self.orientation = (self.orientation + sign_orientation*45) % 360
+            self.orientation = (self.orientation + sign_orientation*90) % 360
             direction = orientation_to_directions(self.orientation)
             new_position = (self.agent_pos[0] + direction[0], self.agent_pos[1] + direction[1])
             return new_position
         else:
-            self.orientation = (self.orientation + sign_orientation*45) % 360
+            self.orientation = (self.orientation + sign_orientation*90) % 360
             new_position = self.agent_pos
             return new_position
 
@@ -363,14 +386,12 @@ class Environment:
         new_pos = self._calc_new_position(actual_action)
 
 
-        gamma = 0.999  # TODO: link this to training procedure gamma
+        gamma = 0.99  # TODO: link this to training procedure gamma
         old_feature_vector = self._compute_features()
-        old_distance_to_target = -max(abs(old_feature_vector[-1]), abs(old_feature_vector[-2]))  # can also any distance measure but chebyshev is most logical here
-        # Negative chebyshev distance, because we can make diagonal moves and cost of diagonal move and straight move are the same
-        # Euclidean distance thinks of diagonal move as sqrt(2) times more 'expensive'
+        old_distance_to_target = -(abs(old_feature_vector[-1]) + abs(old_feature_vector[-2])) # negative manhatten distance
         self._move_agent(new_pos)
         feature_vector = self._compute_features()
-        new_distance_to_target = -max(abs(feature_vector[-1]), abs(feature_vector[-2]))  # negative manhatten distance
+        new_distance_to_target = -(abs(feature_vector[-1]) + abs(feature_vector[-2]))  # negative manhatten distance
         shaping_reward = gamma*new_distance_to_target - old_distance_to_target
 
         # Calculate the reward for the agent
@@ -391,8 +412,8 @@ class Environment:
         feature_vector = self._compute_features()
         return feature_vector, reward, self.terminal_state, self.info
 
-    @staticmethod
-    def _default_reward_function(grid, agent_pos) -> float:
+    #@staticmethod
+    def _default_reward_function(self, grid, agent_pos) -> float:
         """This is a very simple reward function. Feel free to adjust it.
         Any custom reward function must also follow the same signature, meaning
         it must be written like `reward_name(grid, temp_agent_pos)`.
@@ -409,7 +430,10 @@ class Environment:
 
         match grid[agent_pos]:
             case 0:  # Moved to an empty tile
-                reward = -0.5
+                if self.agent_pos == self.old_agent_pos:
+                    reward = -1
+                else:
+                    reward = -0.5
             case 1:  # Moved to a wall
                 reward = -1
             case 2:  # Moved to a obstacle
@@ -431,7 +455,8 @@ class Environment:
                        sigma: float = 0.,
                        agent_start_pos: tuple[int, int] = None,
                        random_seed: int | float | str | bytes | bytearray = 0,
-                       show_images: bool = False):
+                       show_images: bool = False,
+                       target_positions= [None]):
         """Evaluates a single trained agent's performance.
 
         What this does is it creates a completely new environment from the
@@ -455,11 +480,12 @@ class Environment:
         """
 
         env = Environment(grid_fp=grid_fp,
-                          no_gui=True,
+                          no_gui=False,
                           sigma=sigma,
                           agent_start_pos=agent_start_pos,
-                          target_fps=-1,
-                          random_seed=random_seed)
+                          target_fps=30,
+                          random_seed=random_seed,
+                          target_positions=target_positions)
         
         state = env.reset_env()
         initial_grid = np.copy(env.grid)
@@ -471,8 +497,8 @@ class Environment:
             
             action = agent.take_action(state)
             state, _, terminated, _ = env.step(action)
-
-            agent_path.append(state)
+            coordinates = env.agent_pos
+            agent_path.append(coordinates)
 
             if terminated:
                 break

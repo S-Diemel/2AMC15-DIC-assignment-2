@@ -59,10 +59,10 @@ def main(grid: list[Path], no_gui: bool, episodes: int, iters: int, fps: int,
         
     # Set up the environment
     env = Environment(grid, no_gui, sigma=sigma, target_fps=fps,
-                        random_seed=random_seed)  # , agent_start_pos=(1, 1), target_positions=[(1, 12)])
+                        random_seed=random_seed)#, agent_start_pos=(1, 1), target_positions=[(1, 12)])
     
     # Initialize dqn agent
-    agent = DQNAgent(state_size=9, action_size=4, seed=random_seed)  # note we have set the state features and actions ourselves so hardcoded here
+    agent = DQNAgent(state_size=10, action_size=4, seed=random_seed)  # note we have set the state features and actions ourselves so hardcoded here
 
     for episode in range(episodes):
         print(f"Episode {episode + 1}/{episodes} - Epsilon: {epsilon:.4f}")
@@ -100,13 +100,14 @@ def main(grid: list[Path], no_gui: bool, episodes: int, iters: int, fps: int,
                 break
 
     grid_name = grid.stem # Get the grid name from the path
+    agent.epsilon = 0 # for evaluation
     # after all episodes for this grid
     model_path = f"models/dqn_{grid_name}_test.pth"
     agent.save(model_path)
     print(f"Saved trained model to -> {model_path}")
-
-    # Evaluate the agent
-    Environment.evaluate_agent(grid, agent, iters, sigma, random_seed=random_seed)
+    for i in range(5):
+        # Evaluate the agent
+        Environment.evaluate_agent(grid, agent, iters, sigma, random_seed=None)#, agent_start_pos=(1, 1), target_positions=[(1, 12)])
 
 
 if __name__ == '__main__':
