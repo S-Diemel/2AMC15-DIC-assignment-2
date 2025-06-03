@@ -7,7 +7,7 @@ from pathlib import Path
 from tqdm import trange
 
 try:
-    from world.environment_dqn import Environment
+    from world import Environment
     from agents.greedy_agent import GreedyAgent
     from agents.dqn import DQNAgent
 except ModuleNotFoundError:
@@ -34,7 +34,7 @@ def parse_args():
     p.add_argument("--fps", type=int, default=30,
                    help="Frames per second to render at. Only used if "
                         "no_gui is not set.")
-    p.add_argument("--episodes", type=int, default=1000,  # 1000
+    p.add_argument("--episodes", type=int, default=3500,
                    help="Number of episodes to train the agent for. Each episode is completed by either reaching the target, or putting `iter` steps.")
     p.add_argument("--iter", type=int, default=1000,
                    help="Number of iterations to go through.")
@@ -44,7 +44,7 @@ def parse_args():
                    help="Initial epsilon value for the epsilon-greedy policy.")
     p.add_argument("--epsilon_min", type=float, default=0.01,
                    help="Minimum epsilon value for the epsilon-greedy policy.")
-    p.add_argument("--epsilon_decay", type=float, default=0.995,  # Value 0.9985 for 3500 episodes. 
+    p.add_argument("--epsilon_decay", type=float, default=0.9985,  # Value for 3500 episodes. 
                    help="Decay factor for the epsilon value in the epsilon-greedy policy.")
     return p.parse_args()
 
@@ -59,7 +59,7 @@ def main(grid: list[Path], no_gui: bool, episodes: int, iters: int, fps: int,
         
     # Set up the environment
     env = Environment(grid, no_gui, sigma=sigma, target_fps=fps,
-                        random_seed=random_seed)  # , agent_start_pos=(1, 1), target_positions=[(1, 12)])
+                        random_seed=random_seed, agent_start_pos=(1, 1), target_positions=[(1, 12)])
     
     # Initialize dqn agent
     agent = DQNAgent(state_size=9, action_size=4, seed=random_seed)  # note we have set the state features and actions ourselves so hardcoded here
@@ -69,10 +69,10 @@ def main(grid: list[Path], no_gui: bool, episodes: int, iters: int, fps: int,
         # Always reset the environment to initial state
         # state = env.reset()
 
-        env_gui = episode % 100 == 0 and episode != 0
-        # env_gui = False
-        state = env.reset_env(no_gui=not env_gui)
-        
+        # env_gui = episode % 100 == 0 and episode != 0
+        env_gui = False
+        state = env.reset(no_gui=not env_gui)
+
         # Decay epsilon (exploration rate)
         epsilon = max(epsilon_min, epsilon_decay * epsilon)
         agent.epsilon = epsilon
@@ -84,20 +84,15 @@ def main(grid: list[Path], no_gui: bool, episodes: int, iters: int, fps: int,
             # The action is performed in the environment
             next_state, reward, terminated, info = env.step(action)
 
-            # Flag terminated upon reaching target or if the episode limit is reached
-            termination_flag = terminated or i == iters-1
-
-            # Flag terminated only upon reaching target
-            # termination_flag = terminated
-            
-            # Note that there is a difference between action and info["actual_action"], sometimes stochasticity in environment, causes an other action (the "actual actino") to be performed.
-            agent.update(state, info["actual_action"], reward, next_state, termination_flag)
-
-            state = next_state
-
-            # If the final state is reached, stop. But before stopping, we want to incorportate the reward in the Q-value update.
+            # If the final state is reached, stop.
             if terminated:
                 break
+
+            terminated_by_reaching_target = info["target_reached"] or i == iters-1
+
+            agent.update(next_state, reward, info["actual_action"], terminated_by_reaching_target)
+
+            state = next_state
 
     grid_name = grid.stem # Get the grid name from the path
     # after all episodes for this grid

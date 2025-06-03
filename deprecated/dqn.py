@@ -25,7 +25,7 @@ class QNetwork(nn.Module):
     """
     def __init__(self, state_size: int, action_size: int, hidden_dims=(64, 64)):
         super(QNetwork, self).__init__()
-        self.model = nn.Sequential(  # Initializing a simple MLP to approximate Q-values
+        self.model = nn.Sequential(
             nn.Linear(state_size, hidden_dims[0]),
             nn.ReLU(),
             nn.Linear(hidden_dims[0], hidden_dims[1]),
@@ -38,27 +38,24 @@ class QNetwork(nn.Module):
     
 
 class ReplayBuffer:
-    """Replay buffer which is an essential part of DQN agent."""
     def __init__(self, buffer_size: int, batch_size: int, seed: int = 0):
-        self.memory = deque(maxlen=buffer_size)  # First in first out buffer with some max length
+        self.memory = deque(maxlen=buffer_size)
         self.batch_size = batch_size
-        set_all_seeds(seed)  # important to make sure that batch sampling is reproducible
+        set_all_seeds(seed)
 
     def add(self, state, action, reward, next_state, done):
-        """This method adds a new transition to the replay buffer."""
         self.memory.append((state, action, reward, next_state, done))
 
     def sample(self):
-        """This method samples a batch of transitions from the replay buffer."""
-        batch = random.sample(self.memory, k=self.batch_size)  # Sample from memory
-        states, actions, rewards, next_states, terminal_next_state = zip(*batch)  # a clean way to unpack the batches into states, actions, etc.
+        batch = random.sample(self.memory, k=self.batch_size)
+        states, actions, rewards, next_states, terminal_next_state = zip(*batch)
         return (
             torch.from_numpy(np.vstack(states)).float(),
             torch.from_numpy(np.array(actions)).long(),
             torch.from_numpy(np.array(rewards)).float(),
             torch.from_numpy(np.vstack(next_states)).float(),
             torch.from_numpy(np.array(terminal_next_state).astype(np.uint8)).float(),
-        )  # making sure everything is returned in the right format for the Q-network
+        )
 
     def __len__(self):
         return len(self.memory)
@@ -75,10 +72,9 @@ class DQNAgent(BaseAgent):
         gamma: float = 0.99,
         lr: float = 2.5e-4,
         # tau no longer needed for hard updates
-        target_update_every: int = 1000,  # 10000 more usual, but since small space, likely fine
+        target_update_every: int = 1000,  # 1000 more usual, but since small space, likely fine
         update_every: int = 4,
         epsilon_start: float = 1.0,
-        warmup_start_steps: int = 1000,
     ):
         super(DQNAgent, self).__init__()
         set_all_seeds(seed)
@@ -92,16 +88,16 @@ class DQNAgent(BaseAgent):
         self.qnetwork_local = QNetwork(state_size, action_size).to(self._device())
         self.qnetwork_target = QNetwork(state_size, action_size).to(self._device())
         self.optimizer = optim.Adam(self.qnetwork_local.parameters(), lr=lr)
-        self.qnetwork_target.load_state_dict(self.qnetwork_local.state_dict())  # initialize target network with local network weights
 
         # Hard update for target network
         self.target_update_every = target_update_every
         self.learn_steps = 0
+        # initialize target network with local network weights
+        self.qnetwork_target.load_state_dict(self.qnetwork_local.state_dict())
  
         # Replay memory
         self.memory = ReplayBuffer(buffer_size, batch_size, seed)
         self.t_step = 0
-        self.warmup_start_steps = warmup_start_steps
 
         # Epsilon for epsilon-greedy
         self.epsilon = epsilon_start
@@ -126,7 +122,7 @@ class DQNAgent(BaseAgent):
         else:
             return random.choice(np.arange(self.action_size))
 
-    def update(self, state, action, reward, next_state, terminated):
+    def update(self, state, reward, action, terminated_by_reaching_target):
         """
         This method should be called AFTER each step in the environment
         to store transitions and potentially trigger learning.
@@ -135,17 +131,31 @@ class DQNAgent(BaseAgent):
             state: next state (after the action)
             reward: float reward from the environment
             action: int action that was taken
-        """        
-        # TODO: do we terminate only after reaching target or also after episode reaches limit?
-        done = terminated
+        """
+        # Here, 'state' passed is next_state; environment code uses state after step
+        # We need to store (prev_state, action, reward, next_state, done)
+        # For simplicity, we manage prev_state internally
+        if not hasattr(self, 'prev_state'):
+            self.prev_state = None
+            self.prev_action = None
+        
+        # On first call, only store state for next time
+        if self.prev_state is None:
+            self.prev_state = state
+            self.prev_action = action
+            return
+
+        # Otherwise, sample done flag as False; the environment signals terminal separately
+        done = terminated_by_reaching_target
 
         # Add to replay buffer
-        self.memory.add(state, action, reward, next_state, done)
+        self.memory.add(self.prev_state, self.prev_action, reward, state, done)
+        self.prev_state = state
+        self.prev_action = action
 
-        # Learn every update_every time steps
+        # Learn every update_every time steps.
         self.t_step = (self.t_step + 1) % self.update_every
-        if self.t_step == 0 and len(self.memory) >= self.warmup_start_steps:  
-            # start learning weights when memory contains enough samples to sample a batch
+        if self.t_step == 0 and len(self.memory) >= self.batch_size:
             experiences = self.memory.sample()
             self.learn(experiences)
 
@@ -153,7 +163,6 @@ class DQNAgent(BaseAgent):
         """
         Update value parameters using given batch of experience tuples.
         """
-        # Note that the code below is done in parallel for the whole batch
         states, actions, rewards, next_states, terminal_next_state = experiences
         device = self._device()
         states = states.to(device)
@@ -163,23 +172,17 @@ class DQNAgent(BaseAgent):
         terminal_next_state = terminal_next_state.to(device)
 
         # Get max predicted Q values (for next states) from target model
-        Q_targets_next = self.qnetwork_target(next_states).detach().max(1)[0].unsqueeze(1)  # returns the value Q value of the best (next_)action in the next state
+        Q_targets_next = self.qnetwork_target(next_states).detach().max(1)[0].unsqueeze(1)
         # Compute Q targets for current states
         Q_targets = rewards.unsqueeze(1) + (self.gamma * Q_targets_next * (1 - terminal_next_state.unsqueeze(1)))
         # (1 - terminal_next_state.unsqueeze(1)) makes sure that if next state is terminal, we do not add future rewards, but only immediate reward.
         # But we only want to do this if the target state is reached, not if episode ended by iteration limit.
-        # TODO: check final choice above for termination flag
 
         # Get expected Q values from local model
-        Q_expected = self.qnetwork_local(states).gather(1, actions.unsqueeze(1))  # gets the Q value for the action taken in the current state, from the local network
+        Q_expected = self.qnetwork_local(states).gather(1, actions.unsqueeze(1))
 
         # Compute loss
         loss = nn.MSELoss()(Q_expected, Q_targets)
-
-        # Tracking the loss a little bit:
-        # if self.learn_steps % 500 == 0:
-        #     print(f"Step {self.learn_steps} - Q-loss = {loss.item():.4f}")
-
         # Minimize the loss
         self.optimizer.zero_grad()
         loss.backward()
@@ -188,7 +191,6 @@ class DQNAgent(BaseAgent):
         # Hard update target network every self.target_update_every steps
         self.learn_steps += 1
         if self.learn_steps % self.target_update_every == 0:
-            print("Target network is updated")
             self.qnetwork_target.load_state_dict(self.qnetwork_local.state_dict())
 
     def save(self, path: str):
