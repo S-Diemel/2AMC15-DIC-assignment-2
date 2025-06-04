@@ -4,18 +4,21 @@ import torch.nn as nn
 import torch.optim as optim
 from torch.distributions import Categorical
 import numpy as np
+from torch.utils.data import DataLoader, TensorDataset
 
-# Check GPU
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print("Using device:", device)
 
 # Hyperparameters
 lr = 3e-4
-gamma = 0.99
+gamma = 0.9
 lam = 0.95
 eps_clip = 0.2
-k_epochs = 4
-T_horizon = 200
+k_epochs = 10
+T_horizon = 1000
+batch_size = 64
+entropy_coef = 0.01
+
 
 class ActorCritic(nn.Module):
     def __init__(self, state_dim, action_dim):
@@ -35,15 +38,42 @@ class ActorCritic(nn.Module):
         return self.actor(x), self.critic(x)
 
 
-def compute_gae(rewards, values, dones, next_value):
+def compute_gae(rewards, values, terminated, truncated, next_value, gamma=0.9, lam=0.95):
+    """Compute Generalized Advantage Estimation"""
     values = values + [next_value]
     gae = 0
     returns = []
+
     for step in reversed(range(len(rewards))):
-        delta = rewards[step] + gamma * values[step + 1] * (1 - dones[step]) - values[step]
-        gae = delta + gamma * lam * (1 - dones[step]) * gae
+        # For truncated episodes, we should bootstrap from the current value estimate
+        # For terminated episodes, we should not bootstrap (value=0)
+        non_terminal = 1 - terminated[step]
+        non_truncated = 1 - truncated[step]
+
+        delta = rewards[step] + gamma * values[step + 1] * non_terminal - values[step]
+        gae = delta + gamma * lam * non_terminal * non_truncated * gae
         returns.insert(0, gae + values[step])
     return returns
+
+
+class Memory:
+    def __init__(self):
+        self.actions = []
+        self.states = []
+        self.logprobs = []
+        self.rewards = []
+        self.terminated = []  # Renamed from dones to be more explicit
+        self.truncated = []  # New: store truncated flags
+        self.values = []
+
+    def clear(self):
+        self.actions.clear()
+        self.states.clear()
+        self.logprobs.clear()
+        self.rewards.clear()
+        self.terminated.clear()
+        self.truncated.clear()
+        self.values.clear()
 
 
 class PPO:
@@ -57,83 +87,146 @@ class PPO:
         self.memory = Memory()
 
     def take_action(self, state):
-        state = torch.FloatTensor(state).unsqueeze(0).to(device)
-        probs, value = self.policy_old(state)
-        dist = Categorical(probs)
-        action = dist.sample()
+        # Store raw state, convert to tensor when needed
+        state_tensor = torch.FloatTensor(state).unsqueeze(0).to(device)
 
+        with torch.no_grad():  # No gradients needed for action selection
+            probs, value = self.policy_old(state_tensor)
+            dist = Categorical(probs)
+            action = dist.sample()
+            logprob = dist.log_prob(action)
+
+        # Store raw state instead of tensor
         self.memory.states.append(state)
-        self.memory.actions.append(action)
-        self.memory.logprobs.append(dist.log_prob(action))
-        self.memory.values.append(value)
+        self.memory.actions.append(action.item())
+        self.memory.logprobs.append(logprob.item())
+        self.memory.values.append(value.item())
 
         return action.item()
 
-    def update(self):
-        # Convert memory to tensors
-        states = torch.cat(self.memory.states).to(device)
-        actions = torch.stack(self.memory.actions).to(device)
-        old_logprobs = torch.stack(self.memory.logprobs).to(device)
-        values = torch.cat(self.memory.values).squeeze().detach().cpu().numpy()
-        rewards = self.memory.rewards
-        dones = self.memory.dones
+    def store_transition(self, reward, terminated, truncated):
+        """Store reward and termination flags"""
+        self.memory.rewards.append(reward)
+        self.memory.terminated.append(terminated)
+        self.memory.truncated.append(truncated)
 
+    def update(self, next_state=None):
         # Compute next value for bootstrapping
-        with torch.no_grad():
-            next_state = self.memory.states[-1]
-            _, next_value = self.policy_old(next_state)
-            next_value = next_value.item()
+        if next_state is not None:
+            with torch.no_grad():
+                next_state_tensor = torch.FloatTensor(next_state).unsqueeze(0).to(device)
+                _, next_value = self.policy_old(next_state_tensor)
+                next_value = next_value.item()
+        else:
+            next_value = 0  # Terminal state
 
-        returns = compute_gae(rewards, list(values), dones, next_value)
-        returns = torch.tensor(returns, dtype=torch.float32).to(device)
-        values = torch.tensor(values, dtype=torch.float32).to(device)
+        # Compute returns using GAE
+        returns = compute_gae(
+            self.memory.rewards,
+            self.memory.values,
+            self.memory.terminated,
+            self.memory.truncated,
+            next_value,
+            gamma,
+            lam
+        )
+
+        # Convert to tensors
+        states = torch.FloatTensor(self.memory.states).to(device)
+        actions = torch.LongTensor(self.memory.actions).to(device)
+        old_logprobs = torch.FloatTensor(self.memory.logprobs).to(device)
+        returns = torch.FloatTensor(returns).to(device)
+        values = torch.FloatTensor(self.memory.values).to(device)
+
+        # Compute advantages
         advantages = returns - values
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
-        # PPO update
-        for _ in range(k_epochs):
-            probs, state_values = self.policy(states)
-            dist = Categorical(probs)
-            entropy = dist.entropy().mean()
-            new_logprobs = dist.log_prob(actions.squeeze())
+        # Create DataLoader for mini-batch updates
+        dataset = TensorDataset(states, actions, old_logprobs, returns, advantages)
+        dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
 
-            ratios = torch.exp(new_logprobs - old_logprobs.detach())
+        # PPO update for k epochs
+        for epoch in range(k_epochs):
+            for batch_states, batch_actions, batch_old_logprobs, batch_returns, batch_advantages in dataloader:
+                # Get current policy outputs
+                probs, state_values = self.policy(batch_states)
+                dist = Categorical(probs)
+                new_logprobs = dist.log_prob(batch_actions)
+                entropy = dist.entropy().mean()
 
-            surr1 = ratios * advantages
-            surr2 = torch.clamp(ratios, 1 - eps_clip, 1 + eps_clip) * advantages
-            loss = -torch.min(surr1, surr2).mean() + \
-                   0.5 * self.mse_loss(state_values.squeeze(), returns) - \
-                   0.01 * entropy
+                # Compute ratios
+                ratios = torch.exp(new_logprobs - batch_old_logprobs)
 
-            self.optimizer.zero_grad()
-            loss.backward()
-            self.optimizer.step()
+                # Clipped surrogate loss
+                surr1 = ratios * batch_advantages
+                surr2 = torch.clamp(ratios, 1 - eps_clip, 1 + eps_clip) * batch_advantages
+                actor_loss = -torch.min(surr1, surr2).mean()
 
+                # Value function loss using clipped update
+                old_values = self.policy_old(batch_states)[1].detach()  # Old value estimates
+                clipped_values = old_values + torch.clamp(
+                    state_values - old_values,
+                    -eps_clip,
+                    eps_clip
+                )
+                # Use the worse (clipped or unclipped) to be conservative
+                critic_loss = torch.max(
+                    self.mse_loss(state_values.squeeze(), batch_returns),
+                    self.mse_loss(clipped_values.squeeze(), batch_returns)
+                )
+
+                # Total loss
+                total_loss = actor_loss + 0.5 * critic_loss - entropy_coef * entropy
+
+                # Update
+                self.optimizer.zero_grad()
+                total_loss.backward()
+                torch.nn.utils.clip_grad_norm_(self.policy.parameters(), 0.5)  # Gradient clipping
+                self.optimizer.step()
+
+        # Copy new policy to old policy
         self.policy_old.load_state_dict(self.policy.state_dict())
         self.memory.clear()
 
+    def collect_rollout(self, env, T_horizon, T_truncate):
+        state = env.reset_env(no_gui=True)  # Unpack the reset tuple
+        total_reward = 0
+
+        for timestep in range(T_horizon):
+            action = self.take_action(state)
+            next_state, reward, terminated, info = env.step(action)  # Updated to handle truncated
+
+            # Check if truncated
+            if timestep >= T_truncate:
+                truncated = True
+            else:
+                truncated = False
+
+            # Optional reward shaping
+            if reward == -1:
+                reward = -1 * ((abs(next_state[7]) + abs(next_state[8])) / 10)
+
+            # Store both terminated and truncated flags
+            self.store_transition(reward, terminated, truncated)
+            total_reward += reward
+            state = next_state
+
+            if terminated or truncated:
+                state = env.reset_env(no_gui=True) # Reset after episode ends
+                break
+        self.update(state)
+        return total_reward
+
     def save(self, path: str):
-        """Save the policy network to disk."""
-        torch.save(self.policy.state_dict(), path)
+        torch.save({
+            'policy_state_dict': self.policy.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+        }, path)
 
     def load(self, path: str):
-        """Load the policy network from disk."""
-        self.policy.load_state_dict(torch.load(path))
-        self.policy_old.load_state_dict(self.policy.state_dict())  # sync old policy
-
-class Memory:
-    def __init__(self):
-        self.actions = []
-        self.states = []
-        self.logprobs = []
-        self.rewards = []
-        self.dones = []
-        self.values = []
-
-    def clear(self):
-        self.actions.clear()
-        self.states.clear()
-        self.logprobs.clear()
-        self.rewards.clear()
-        self.dones.clear()
-        self.values.clear()
+        checkpoint = torch.load(path, map_location=device)
+        self.policy.load_state_dict(checkpoint['policy_state_dict'])
+        self.policy_old.load_state_dict(self.policy.state_dict())
+        if 'optimizer_state_dict' in checkpoint:
+            self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])

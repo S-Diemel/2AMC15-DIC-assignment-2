@@ -37,9 +37,9 @@ def parse_args():
     p.add_argument("--fps", type=int, default=30,
                    help="Frames per second to render at. Only used if "
                         "no_gui is not set.")
-    p.add_argument("--episodes", type=int, default=100,
+    p.add_argument("--episodes", type=int, default=1000,
                    help="Number of episodes to train the agent for. Each episode is completed by either reaching the target, or putting `iter` steps.")
-    p.add_argument("--iter", type=int, default=100,
+    p.add_argument("--iter", type=int, default=1000,
                    help="Number of iterations to go through.")
     p.add_argument("--random_seed", type=int, default=0,
                    help="Random seed value for the environment.")
@@ -61,40 +61,18 @@ def main(grid: list[Path], no_gui: bool, episodes: int, iters: int, fps: int,
     grid = grid[0]
 
     # Set up the environment
-    env = Environment(grid, no_gui, sigma=sigma, target_fps=fps,
-                      random_seed=random_seed, agent_start_pos=(1, 1), target_positions=[(1, 12)])
+    env = Environment(grid, no_gui=False, sigma=sigma, target_fps=fps,
+                      random_seed=random_seed, agent_start_pos=(11, 3), target_positions=[(9, 13)])
 
-    # Initialize dqn agent
     agent = ppo.PPO(state_dim=9, action_dim=4)
 
+    t_truncate = 500    # Stop an episode for going on forever
+
     for episode in range(episodes):
-        print(f"Episode {episode + 1}/{episodes} - Epsilon: {epsilon:.4f}")
-        # Always reset the environment to initial state
-        # state = env.reset()
+        print(f"Episode {episode + 1}/{episodes}")
 
-        # env_gui = episode % 100 == 0 and episode != 0
-        env_gui = False
-        state = env.reset_env(no_gui=not env_gui)
-        agent.memory.clear()
-        total_reward = 0
-
-        for i in trange(iters):
-
-            # Agent takes an action based on the latest observation and info.
-            action = agent.take_action(state)
-            # The action is performed in the environment
-            next_state, reward, terminated, info = env.step(action)
-
-            agent.memory.rewards.append(reward)
-            agent.memory.dones.append(terminated)
-            total_reward += reward
-            state = next_state
-
-            # If the final state is reached, stop.
-            if terminated:
-                break
-
-        agent.update()
+        total_reward = agent.collect_rollout(env, iters, t_truncate)
+        print(f"Total reward: {total_reward:.2f}")
 
     grid_name = grid.stem  # Get the grid name from the path
     # after all episodes for this grid
