@@ -39,9 +39,9 @@ def parse_args():
     p.add_argument("--fps", type=int, default=30,
                    help="Frames per second to render at. Only used if "
                         "no_gui is not set.")
-    p.add_argument("--episodes", type=int, default=500,
+    p.add_argument("--episodes", type=int, default=5000,
                    help="Number of episodes to train the agent for. Each episode is completed by either reaching the target, or putting `iter` steps.")
-    p.add_argument("--iter", type=int, default=1000,
+    p.add_argument("--iter", type=int, default=500,
                    help="Number of iterations to go through.")
     p.add_argument("--random_seed", type=int, default=0,
                    help="Random seed value for the environment.")
@@ -76,7 +76,7 @@ def main(grid: list[Path], no_gui: bool, episodes: int, iters: int, fps: int,
         for timestep in trange(iters):
 
             # Select action based on PPO agent's policy
-            action = agent.take_action(state)
+            action = agent.take_action_training(state)
             next_state, reward, terminated, info = env.step(action)  # Updated to handle truncated
 
             # Update PPO agent's buffer

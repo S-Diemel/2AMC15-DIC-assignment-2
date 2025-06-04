@@ -124,7 +124,7 @@ class PPOAgent(BaseAgent):
         self.buffer = RolloutBuffer()
         self.step_counter = 0
 
-    def take_action(self, state: tuple[int, int] | np.ndarray) -> int:
+    def take_action_training(self, state: tuple[int, int] | np.ndarray) -> int:
         """Returns actions for given state as per current policy."""
         state = np.array(state, dtype=np.float32)
         state_tensor = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
@@ -137,6 +137,17 @@ class PPOAgent(BaseAgent):
         # Add action, log_pop, value to buffer
         self.buffer.add(action=action.item(), log_prob=log_prob.item(), value=value.item())
         return action.item()
+
+    def take_action(self, state: tuple[int, int] | np.ndarray) -> int:
+        """Returns greedy action for eval"""
+        state = np.array(state, dtype=np.float32)
+        state_tensor = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
+
+        with torch.no_grad():
+            probs, _ = self.policy_old(state_tensor)  # Ignore value estimate during eval
+            greedy_action = torch.argmax(probs).item()
+
+        return greedy_action
 
     def learn(self, next_state=None):
         """Learn from rollout buffer when step>=rollout_steps"""
