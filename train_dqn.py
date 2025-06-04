@@ -34,7 +34,7 @@ def parse_args():
     p.add_argument("--fps", type=int, default=30,
                    help="Frames per second to render at. Only used if "
                         "no_gui is not set.")
-    p.add_argument("--episodes", type=int, default=1000,  # 1000
+    p.add_argument("--episodes", type=int, default=10000,  # 1000
                    help="Number of episodes to train the agent for. Each episode is completed by either reaching the target, or putting `iter` steps.")
     p.add_argument("--iter", type=int, default=1000,
                    help="Number of iterations to go through.")
@@ -44,7 +44,7 @@ def parse_args():
                    help="Initial epsilon value for the epsilon-greedy policy.")
     p.add_argument("--epsilon_min", type=float, default=0.01,
                    help="Minimum epsilon value for the epsilon-greedy policy.")
-    p.add_argument("--epsilon_decay_proportion", type=float, default=0.5, 
+    p.add_argument("--epsilon_decay_proportion", type=float, default=0.7,
                    help="Proportion of training to decay epsilon over. " \
                    "0.5 means that halfway of the training procedure we the epsilon has reached in minimum value of 0.1.")
     return p.parse_args()
@@ -73,8 +73,8 @@ def main(grid: list[Path], no_gui: bool, episodes: int, iters: int, fps: int,
         # Always reset the environment to initial state
         # state = env.reset()
 
-        env_gui = episode % 100 == 0 and episode != 0
-        # env_gui = False
+        #env_gui = episode % 100 == 0 and episode != 0
+        env_gui = False
         state = env.reset_env(no_gui=not env_gui)
 
         for i in trange(iters):
