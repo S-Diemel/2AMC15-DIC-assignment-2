@@ -1,6 +1,8 @@
 import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle, Circle
 
 def action_to_values(action):
     values = {
@@ -24,6 +26,37 @@ def orientation_to_directions(orientation):
         315: (-1, 1),    # Up-Left
     }
     return directions[orientation]
+
+def sample_points_in_rectangles(rectangles, number_of_items, radius):
+    points = []
+    for _ in range(number_of_items):
+        rect = rectangles[np.random.randint(len(rectangles))]
+        x = np.random.uniform(rect[0] + radius, rect[2] - radius)
+        y = np.random.uniform(rect[1] + radius, rect[3] - radius)
+        points.append((x, y))
+    return points
+
+def sample_one_point_outside(rectangles, radius, bounding_rect):
+    xmin_b, ymin_b, xmax_b, ymax_b = bounding_rect
+
+    # Pre‐compute the “inflated” rectangles
+    inflated = []
+    for (xmin, ymin, xmax, ymax) in rectangles:
+        inflated.append((xmin - radius, ymin - radius, xmax + radius, ymax + radius))
+
+    def is_inside_inflated(x, y):
+        for (ixmin, iymin, ixmax, iymax) in inflated:
+            if ixmin <= x <= ixmax and iymin <= y <= iymax:
+                return True
+        return False
+
+    # Keep drawing until we find one point that is not inside any inflated rectangle
+    while True:
+        x_cand = np.random.uniform(xmin_b, xmax_b)
+        y_cand = np.random.uniform(ymin_b, ymax_b)
+        if not is_inside_inflated(x_cand, y_cand):
+            return (x_cand, y_cand)
+
 class WarehouseEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
 
@@ -33,7 +66,7 @@ class WarehouseEnv(gym.Env):
             height=10.0,
             rack_obstacles=None,
             box_obstacles=None,
-            item_starts=None,
+            number_of_items=1,
             delivery_points=None,
             agent_radius=0.2,
             step_size=0.2,
@@ -44,11 +77,12 @@ class WarehouseEnv(gym.Env):
         self.height = height
         self.agent_radius = agent_radius
         self.step_size = step_size
-        self.speed = 1
+        self.speed = 0
         self.orientation = 0
+        self.agent_angle = 90
         # Obstacles: list of (x_min, y_min, x_max, y_max)
         self.racks = rack_obstacles or [
-            (4.0, 0.0, 4.5, 6.0),  # example rack
+            (4.0, 2.0, 4.5, 6.0),  # example rack
             (6.0, 4.0, 6.5, 10.0),
         ]
         self.box_obs = box_obstacles or [
@@ -57,40 +91,46 @@ class WarehouseEnv(gym.Env):
         ]
         self.charger = (4,9,6,10)
         self.forbidden_zone = (0,8,2,10)
-        self.agent_angle = 90
-        self.item_starts = item_starts or [(2.0, 2.0), (1.0, 1.0)]
+        self.all_obstacles = self.racks+self.box_obs+[self.forbidden_zone]
+        self.number_of_items = number_of_items
         self.item_radius = 0.2
-        self.delivery_points = delivery_points or [(8.0, 8.0), (9.0, 2.0)]
-        self.delivery_radius = agent_radius * 1.5
+        self.item_spawn = [(0,0,2,2)]
+        self.item_spawn_center = ((self.item_spawn[0][0]+self.item_spawn[0][2])/2,(self.item_spawn[0][1]+ self.item_spawn[0][3])/2)
+        self.item_starts = sample_points_in_rectangles(self.item_spawn, self.number_of_items, self.item_radius)
+        self.delivery_zones = [(8,0,10,2), (7, 8, 10, 10)]
+        self.delivery_radius = agent_radius
+        self.delivery_points = sample_points_in_rectangles(self.delivery_zones, self.number_of_items, self.delivery_radius)
 
         # Actions: 0=up,1=down,2=left,3=right
         self.action_space = spaces.Discrete(5)
 
-        # Observation: [agent_x, agent_y, orientation, speed, carrying (0/1), target_x, target_y, dist_fw, dist_left, dist_right, item_fw, item_fw_left, item_fw_right, battery]
-        low = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], dtype=np.float32)
+        # Observation: [agent_x, agent_y, orientation, carrying (0/1), target_x, target_y, dist_fw, dist_left, dist_right, item_fw, item_fw_left, item_fw_right, battery]
+        low = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], dtype=np.float32)
         high = np.array(
-            [width, height, 3, 1, 1, width, height, 10, 10, 10, 10, 10, 10, 1], dtype=np.float32
+            [width, height, 3, 1, width, height, 10, 10, 10, 10, 10, 10, 1], dtype=np.float32
         )
         self.observation_space = spaces.Box(low, high, dtype=np.float32)
 
         self.reset()
 
-    def reset(self, seed=None, options=None):
+    def reset(self, no_gui=True, seed=None):
         super().reset(seed=seed)
-        self.agent_pos = np.array([self.agent_radius + 0.1, self.agent_radius + 0.1], dtype=np.float32)
+
+        self.agent_pos = np.array(sample_one_point_outside(self.all_obstacles, self.agent_radius, (0,0,self.width,self.height)))
         self.items = [np.array(pos, dtype=np.float32) for pos in self.item_starts]
         self.delivered = [False] * len(self.items)
         self.carrying = -1  # -1 = none, otherwise index of carried item
         self.battery = 100
+        self.no_gui = no_gui
         return self._compute_features()
 
 
     def _calc_new_position(self, action):
         new_speed, sign_orientation = action_to_values(action)
-        if action == 0 or action == 1:
-            self.speed = new_speed
+        # if action == 0 or action == 1:
+        #     self.speed = new_speed
 
-        if self.speed == 1:
+        if self.speed == 0 and action==0:
             self.orientation = (self.orientation + sign_orientation*self.agent_angle) % 360
             direction = orientation_to_directions(self.orientation)
             new_position = np.array([self.agent_pos[0] + self.step_size*direction[0], self.agent_pos[1] + self.step_size*direction[1]])
@@ -195,14 +235,19 @@ class WarehouseEnv(gym.Env):
         self.battery -= 0.1
         old_battery = self.battery
         x, y = self.agent_pos
-        xmin, ymin, xmax, ymax = self.forbidden_zone
+        xmin, ymin, xmax, ymax = self.charger
         if xmin <= x <= xmax and ymin <= y <= ymax and self.speed == 0:
             self.battery = 100
             if old_battery <= 10:
                 return True
         return False
 
-
+    def _compute_dist_to_target(self):
+        target_x, target_y = self._compute_target()
+        x, y = self.agent_pos
+        dist_target_x = target_x - x
+        dist_target_y = target_y - y
+        return dist_target_x, dist_target_y
     def _compute_features(self):
         x, y = self.agent_pos
 
@@ -214,26 +259,33 @@ class WarehouseEnv(gym.Env):
         item_right = self._item_sensor((self.orientation+self.agent_angle)%360)
         if self.carrying >= 0:
             carrying = 1
-            target_x, target_y = self.delivery_points[self.carrying]
         else:
             carrying = 0
-            target_x, target_y = (0,0)
+        dist_target_x, dist_target_y = self._compute_dist_to_target()
 
-
-        feature_vector = [x, y, self.orientation/self.agent_angle, self.speed, carrying, target_x, target_y,
-                          steps_fw, steps_left, steps_right, item_fw, item_left, item_right,
+        feature_vector = [x/self.width, y/self.height, self.orientation/self.agent_angle, carrying, dist_target_x/self.width, dist_target_y/self.height,
+                          steps_fw/10, steps_left/10, steps_right/10, item_fw/10, item_left/10, item_right/10,
                           self.battery/100]
         # Observation: [agent_x, agent_y, orientation, speed, carrying (0/1), target_x, target_y, dist_fw, dist_left, dist_right, item_fw, item_fw_left, item_fw_right, battery]
         return feature_vector
+
+    def _compute_target(self):
+        if self.carrying >= 0:
+            target_x, target_y = self.delivery_points[self.carrying]
+        else:
+            target_x, target_y = self.item_spawn_center
+        return target_x, target_y
     def step(self, action):
         assert self.action_space.contains(action)
         old_pos = self.agent_pos.copy()
+        old_target = self._compute_target()
         new_pos = self._calc_new_position(action)
         correct_new_pos, collided = self._calc_collision(old_pos, new_pos)
         self.agent_pos = correct_new_pos
         pickup, delivered = self._update_delivery(action)
         charged = self._update_battery()
-        reward = self._reward_function(pickup, delivered, collided, charged)
+        reward = self._reward_function(pickup, delivered, collided, charged, old_pos)
+        reward += self._shaping_reward(old_pos, old_target)
         if self.battery == 0 or all(self.delivered):
             done = True
         else:
@@ -248,25 +300,33 @@ class WarehouseEnv(gym.Env):
         return (x + r > xmin and x - r < xmax and
                 y + r > ymin and y - r < ymax)
 
-    def _reward_function(self, pickup, delivered, collided, charged):
-        #TODO: shaping reward if agent is carrying an item
-        reward = -1
+    def _reward_function(self, pickup, delivered, collided, charged, old_pos):
+        reward = -0.5
+        if old_pos[0]==self.agent_pos[0] and old_pos[1]==self.agent_pos[1]:
+            reward -= 0.5
         if charged:
             reward+=5
         if pickup:
-            reward+=10
+            reward+=100
         if delivered:
-            reward+=20
+            reward+=200
         if collided:
-            reward-=5
+            reward-=2
         if self._check_forbidden_zone():
-            reward-=5
+            reward-=2
         return reward
 
-    def render(self, mode="human"):
-        import matplotlib.pyplot as plt
-        from matplotlib.patches import Rectangle, Circle
+    def _shaping_reward(self, old_pos, old_target):
+        gamma=0.99
+        old_distance_to_target = -(abs(old_pos[0]-old_target[0]) + abs(old_pos[1]-old_target[1])) # negative manhattan distance
+        new_distance_to_target = -(abs(self.agent_pos[0]-old_target[0]) + abs(self.agent_pos[1]-old_target[1]))  # negative manhattan distance
+        shaping_reward = gamma*new_distance_to_target - old_distance_to_target
+        return shaping_reward
 
+
+    def render(self, mode="human"):
+        if self.no_gui:
+            return
         plt.clf()
         ax = plt.gca()
         ax.set_xlim(0, self.width)
@@ -281,9 +341,13 @@ class WarehouseEnv(gym.Env):
             ax.add_patch(Rectangle((xmin, ymin), xmax-xmin, ymax-ymin, color="saddlebrown"))
         for (xmin, ymin, xmax, ymax) in self.box_obs:
             ax.add_patch(Rectangle((xmin, ymin), xmax-xmin, ymax-ymin, color="gray"))
+        for (xmin, ymin, xmax, ymax) in self.item_spawn:
+            ax.add_patch(Rectangle((xmin, ymin), xmax-xmin, ymax-ymin,  fill=False, linestyle="--"))
+        for (xmin, ymin, xmax, ymax) in self.delivery_zones:
+            ax.add_patch(Rectangle((xmin, ymin), xmax-xmin, ymax-ymin, fill=False, linestyle="--"))
 
         for point in self.delivery_points:
-            ax.add_patch(Circle(point, self.delivery_radius, fill=False, linestyle="--"))
+            ax.add_patch(Circle(point, self.delivery_radius, color='red'))
 
         for i, pos in enumerate(self.items):
             if not self.delivered[i] or self.carrying == i:
@@ -307,13 +371,4 @@ class WarehouseEnv(gym.Env):
         pass
 
 
-# Example usage:
-if __name__ == "__main__":
-    env = WarehouseEnv()
-    obs, _ = env.reset()
-    done = False
-    while not done:
-        action = env.action_space.sample()  # random
-        obs, rew, done, _, _ = env.step(action)
-        env.render()
-    print("Episode finished.")
+

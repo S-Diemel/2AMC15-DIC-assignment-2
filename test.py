@@ -2,7 +2,7 @@ from world import WarehouseEnv
 import time
 
 env = WarehouseEnv()
-obs = env.reset()
+obs = env.reset(no_gui=False)
 done = False
 
 for _ in range(1000):
