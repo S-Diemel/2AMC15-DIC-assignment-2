@@ -42,7 +42,11 @@ def point_in_rectangle(x, y, rect):
 
 
 def sample_points_in_rectangles(rectangles, number_of_items, radius, difficulty_region=None):
-    """Sample package points to spawn packages in package pickup area, and delivery points in drop-off areas around storage racks."""
+    """
+    Sample package points to spawn packages in package pickup area, and delivery points in drop-off areas around storage racks.
+    Furthermore, the optional difficulty region allows us to sample only points that are within a certain difficulty region of the
+    warehouse. The easier the difficulty region, the closer the delivery points will be to the package spawn area. 
+    """
     points = []
     for _ in range(number_of_items):
         valid_point = False
@@ -64,6 +68,8 @@ def sample_one_point_outside(rectangles, radius, bounding_rect, difficulty_regio
     """
     Sample agents starting position, that it not too close to any of the obstacles. 
     Gives a set of rectangles, a distance around these rectangles (radius), and a total bounding rectangle within which to sample.
+    Furthermore, the optional difficulty regrion allows us to sample only points that are within a certain difficulty region of the
+    warehouse. The easier the difficulty region, the closer the agents spawn will be to the package spawn area. 
     """
     xmin_b, ymin_b, xmax_b, ymax_b = bounding_rect
 
