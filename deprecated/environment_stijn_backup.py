@@ -360,7 +360,6 @@ class WarehouseEnv(gym.Env):
             if not self.delivered[i] or self.carrying == i:
                 ax.add_patch(Circle(pos, self.item_radius, color="orange"))
 
-
         # draw agent
         ax.add_patch(Circle(self.agent_pos, self.agent_radius, color="blue"))
         direction = np.array(orientation_to_directions(self.orientation))

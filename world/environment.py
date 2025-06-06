@@ -69,7 +69,7 @@ def sample_one_point_outside(rectangles, radius, bounding_rect):
             return (x_cand, y_cand)
 
 
-class WarehouseEnv(gym.Env):
+class Environment(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 60}
 
     def __init__(
