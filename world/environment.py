@@ -4,6 +4,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle, Circle
 
+
 def action_to_values(action):
     """
     Define what the action integers mean in terms of speed and orientation change. First index of tuple indicates speed, 
@@ -19,6 +20,7 @@ def action_to_values(action):
     }
     return values[action]
 
+
 def orientation_to_directions(orientation):
     """What does the orientation in degree mean in terms of x and y direction of a one-unit step."""
     directions = {
@@ -33,17 +35,32 @@ def orientation_to_directions(orientation):
     }
     return directions[orientation]
 
-def sample_points_in_rectangles(rectangles, number_of_items, radius):
+
+def point_in_rectangle(x, y, rect):
+    xmin, ymin, xmax, ymax = rect
+    return xmin <= x <= xmax and ymin <= y <= ymax
+
+
+def sample_points_in_rectangles(rectangles, number_of_items, radius, difficulty_region=None):
     """Sample package points to spawn packages in package pickup area, and delivery points in drop-off areas around storage racks."""
     points = []
     for _ in range(number_of_items):
-        rect = rectangles[np.random.randint(len(rectangles))]
-        x = np.random.uniform(rect[0] + radius, rect[2] - radius)
-        y = np.random.uniform(rect[1] + radius, rect[3] - radius)
-        points.append((x, y))
+        valid_point = False
+        while not valid_point:
+            rect = rectangles[np.random.randint(len(rectangles))]
+            x = np.random.uniform(rect[0] + radius, rect[2] - radius)
+            y = np.random.uniform(rect[1] + radius, rect[3] - radius)
+            if difficulty_region is None:
+                points.append((x, y))
+                valid_point = True
+            else:
+                if point_in_rectangle(x, y, difficulty_region):
+                    points.append((x, y))
+                    valid_point = True
     return points
 
-def sample_one_point_outside(rectangles, radius, bounding_rect):
+
+def sample_one_point_outside(rectangles, radius, bounding_rect, difficulty_region=None):
     """
     Sample agents starting position, that it not too close to any of the obstacles. 
     Gives a set of rectangles, a distance around these rectangles (radius), and a total bounding rectangle within which to sample.
@@ -65,8 +82,12 @@ def sample_one_point_outside(rectangles, radius, bounding_rect):
     while True:
         x_cand = np.random.uniform(xmin_b, xmax_b)
         y_cand = np.random.uniform(ymin_b, ymax_b)
-        if not is_inside_inflated(x_cand, y_cand):
-            return (x_cand, y_cand)
+        if difficulty_region is not None:
+            if not is_inside_inflated(x_cand, y_cand) and point_in_rectangle(x_cand, y_cand, difficulty_region):
+                return (x_cand, y_cand)
+        else:
+            if not is_inside_inflated(x_cand, y_cand):
+                return (x_cand, y_cand)
 
 
 class Environment(gym.Env):
@@ -77,6 +98,7 @@ class Environment(gym.Env):
         number_of_items=3,
         agent_radius=0.25,
         step_size=0.2,
+        difficulty=None,  # Difficulty level represented by None (random no particular difficulty level), 0 (easy), 1 (medium), 2 (hard)  
         extra_obstacles=None,  # List of additional obstacles, if any --> useful for experimenting with humans or boxes in random places
     ):
         super().__init__()
@@ -93,7 +115,9 @@ class Environment(gym.Env):
         self.battery_value_reward_charging = 20  # From which battery level to reward the agent for going to the charging station. 
 
         # Define the layout based on the image
-        self.item_spawn = [(0, 0, 3, 10)]  # Yellow Area: where packages spawn
+        self.item_spawn = [(0, 0, 3, self.height)]  # Yellow Area: where packages spawn
+        assert len(self.item_spawn) == 1, "The environment allows only a single item spawn, due to some inherent design choices and scope limitation." 
+
         self.racks = [  # Blue Areas: storage racks
             (5, 8, 9, 9),
             (11, 8, 14, 9),
@@ -117,13 +141,14 @@ class Environment(gym.Env):
         # Combine all obstacles for collision detection 
         self.all_obstacles = self.racks + self.extra_obstacles
 
+        # For CURRICULUM LEARNING: define the difficulty of the environment by constraining the agent starting position and delivery points
+        self.difficulty = difficulty
+
         # Define all items (= packages), there spawn points and the delivery points
         self.number_of_items = number_of_items
         self.item_radius = 0.2
         self.item_spawn_center = ((self.item_spawn[0][0] + self.item_spawn[0][2]) / 2, (self.item_spawn[0][1] + self.item_spawn[0][3]) / 2)
-        self.item_starts = sample_points_in_rectangles(self.item_spawn, self.number_of_items, self.item_radius)
         self.delivery_radius = agent_radius
-        self.delivery_points = sample_points_in_rectangles(self.delivery_zones, self.number_of_items, self.delivery_radius)
         # Both items and delivery points are linked by index, so item 0 is delivered at delivery point 0, etc.
 
         # Initialize some Gym environment paramters: Necessary for Gym-compatible trainers
@@ -173,7 +198,47 @@ class Environment(gym.Env):
 
         # Call reset to finish initializing the environment
         self.reset()
-
+    
+    def reset(self, no_gui=True, seed=None, agent_start_pos=False, difficulty=None):
+        """
+        Resetting the environment for a new task for the agent. This involves spawning packages/items, delivery points, the agent itself. 
+        It also involves initializing some attributes to the environment and the agent, such as: that it is not carrying any items/packages, 
+        it has not delivered any packages yet, it is at full battery, etc. Finally it computes the initial agent state observation vector.
+        """
+        super().reset(seed=seed)
+        if difficulty is not None:
+            self.difficulty = difficulty
+        self.difficulty_region = self._set_difficulty_of_env(self.difficulty)  # For curriculum learning set the difficulty of the environment
+        self.item_starts = sample_points_in_rectangles(self.item_spawn, self.number_of_items, self.item_radius)  # spawn/initialize packages/items
+        self.delivery_points = sample_points_in_rectangles(self.delivery_zones, self.number_of_items, self.delivery_radius, self.difficulty_region)  # choose delivery spots
+        if not agent_start_pos:  # randomly sample agent position if none is supplied.
+            self.agent_pos = np.array(sample_one_point_outside(self.all_obstacles, self.agent_radius, (0, 0, self.width, self.height), self.difficulty_region))
+        else:
+            self.agent_pos = np.array(agent_start_pos)  # Use given starting position
+        self.items = [np.array(pos, dtype=np.float32) for pos in self.item_starts] 
+        self.delivered = [False] * len(self.items)
+        self.carrying = -1  # -1 = not carrying any items; otherwise this is the index of the item that is at that moment carried by the agent.
+        self.battery = 100  # initializes battery
+        self.no_gui = no_gui
+        return self._compute_features()
+    
+    def _set_difficulty_of_env(self, difficulty=None):
+        """
+        For CURRICULUM LEARNING: define invisible easy, medium and hard zones within the environment,
+        which divide the warehouse to the right of the package spawn place into 3 evenly sized sections.
+        The agent and the delivery points will exclusively be sampled according to the selected difficulty level. 
+        """
+        # Only values None, 0, 1, 2 are accepted the rest is not accepted
+        assert difficulty in [None, 0, 1, 2], "Only values None (no level), 0 (easy), 1 (medium), 2 (hard) are accepted the rest is not accepted"
+        item_spawn_width = self.item_spawn[0][2]
+        width_difficulty_region = (self.width - item_spawn_width) / 3
+        # Create difficulty region
+        difficulty_region = (item_spawn_width + difficulty * width_difficulty_region, 
+                             0, 
+                             item_spawn_width + (difficulty + 1) * width_difficulty_region, 
+                             self.height) if difficulty is not None else None
+        return difficulty_region
+    
     def _create_delivery_zones(self, racks, margin):
         """
         Creates rectangular delivery zones around a list of storage racks, but make sure that the rectangular delivery areas 
@@ -204,27 +269,6 @@ class Environment(gym.Env):
             add_clipped_zone(xmax, ymin, xmax + margin, ymax)  # Right
             
         return delivery_zones
-
-    def reset(self, no_gui=True, seed=None, agent_start_pos=False):
-        """
-        Resetting the environment for a new task for the agent. This involves spawning packages/items, delivery points, the agent itself. 
-        It also involves initializing some attributes to the environment and the agent, such as: that it is not carrying any items/packages, 
-        it has not delivered any packages yet, it is at full battery, etc. Finally it computes the initial agent state observation vector.
-        """
-        super().reset(seed=seed)
-        self.item_starts = sample_points_in_rectangles(self.item_spawn, self.number_of_items, self.item_radius)  # spawn/initialize packages/items
-        self.delivery_points = sample_points_in_rectangles(self.delivery_zones, self.number_of_items, self.delivery_radius)  # choose delivery spots
-        if not agent_start_pos:  # randomly sample agent position if none is supplied.
-            self.agent_pos = np.array(sample_one_point_outside(self.all_obstacles, self.agent_radius, (0, 0, self.width, self.height)))
-        else:
-            self.agent_pos = np.array(agent_start_pos)  # Use given starting position
-        self.items = [np.array(pos, dtype=np.float32) for pos in self.item_starts] 
-        self.delivered = [False] * len(self.items)
-        self.carrying = -1  # -1 = not carrying any items; otherwise this is the index of the item that is at that moment carried by the agent.
-        self.battery = 100  # initializes battery
-        self.no_gui = no_gui
-        return self._compute_features()
-
 
     def _calc_new_position(self, action):
         """Calculate the new position and orientation of the agent within the environment."""
@@ -502,7 +546,7 @@ class Environment(gym.Env):
         shaping_reward = gamma*new_distance_to_target - old_distance_to_target
         return shaping_reward
 
-    def render(self, mode="human"):
+    def render(self, mode="human", show_difficulty_region=True):
         """This function renders the GUI of the environement allowing us to visually inspect the agents behaviour."""
         if self.no_gui:
             return
@@ -528,8 +572,8 @@ class Environment(gym.Env):
 
         # Draw Obstacles and Charger
         # Forbidden Zone (Red)
-        xmin, ymin, xmax, ymax = self.forbidden_zones[0]  # TODO: make sure this works for multiple forbidden zones
-        ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="red", alpha=0.5))
+        for (xmin, ymin, xmax, ymax) in self.forbidden_zones:
+            ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="red", alpha=0.5))
         # Charger (Purple)
         xmin, ymin, xmax, ymax = self.charger
         ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="purple", alpha=0.6))
@@ -545,6 +589,11 @@ class Environment(gym.Env):
         for i, pos in enumerate(self.items):
             if not self.delivered[i] or self.carrying == i:
                 ax.add_patch(Circle(pos, self.item_radius, color="orange"))
+
+        if show_difficulty_region:
+            if self.difficulty_region is not None:
+                xmin, ymin, xmax, ymax = self.difficulty_region
+                ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="green", alpha=0.25))
 
         # Draw Agent
         ax.add_patch(Circle(self.agent_pos, self.agent_radius, color="green"))
