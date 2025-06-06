@@ -5,29 +5,36 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Rectangle, Circle
 
 def action_to_values(action):
+    """
+    Define what the action integers mean in terms of speed and orientation change. First index of tuple indicates speed, 
+    second index indicates change in orientation in 45 degree increments.
+    """
     values = {
-        0: (1, 0),   # go
-        1: (0, 0),  # stop
-        2: (0, -1),  # Left
-        3: (0, 1),   # Right
-        4: (0,0)
+        0: (1, 0),      # go
+        1: (0, -2),     # left 90 
+        2: (0, -1),     # left 45 
+        3: (0, 1),      # right 45
+        4: (0, 2),      # right 90
+        5: (0, 0)       # pickup/drop
     }
     return values[action]
 
 def orientation_to_directions(orientation):
+    """What does the orientation in degree mean in terms of x and y direction of a one-unit step."""
     directions = {
-        0: (0, 1),       # Up
-        45: (1, 1),      # Up-Right
-        90: (1, 0),       # Right
+        0: (0, 1),         # Up
+        45: (1, 1),        # Up-Right
+        90: (1, 0),        # Right
         135: (1, -1),      # Down-Right
         180: (0, -1),      # Down
         225: (-1, -1),     # Down-Left
-        270: (-1, 0),     # Left
-        315: (-1, 1),    # Up-Left
+        270: (-1, 0),      # Left
+        315: (-1, 1),      # Up-Left
     }
     return directions[orientation]
 
 def sample_points_in_rectangles(rectangles, number_of_items, radius):
+    """Sample package points to spawn packages in package pickup area, and delivery points in drop-off areas around storage racks."""
     points = []
     for _ in range(number_of_items):
         rect = rectangles[np.random.randint(len(rectangles))]
@@ -37,9 +44,13 @@ def sample_points_in_rectangles(rectangles, number_of_items, radius):
     return points
 
 def sample_one_point_outside(rectangles, radius, bounding_rect):
+    """
+    Sample agents starting position, that it not too close to any of the obstacles. 
+    Gives a set of rectangles, a distance around these rectangles (radius), and a total bounding rectangle within which to sample.
+    """
     xmin_b, ymin_b, xmax_b, ymax_b = bounding_rect
 
-    # Pre‐compute the “inflated” rectangles
+    # Pre‐compute the 'inflated' rectangles
     inflated = []
     for (xmin, ymin, xmax, ymax) in rectangles:
         inflated.append((xmin - radius, ymin - radius, xmax + radius, ymax + radius))
@@ -50,89 +61,174 @@ def sample_one_point_outside(rectangles, radius, bounding_rect):
                 return True
         return False
 
-    # Keep drawing until we find one point that is not inside any inflated rectangle
+    # Keep sampling until we find a point that is not inside any of the inflated rectangles
     while True:
         x_cand = np.random.uniform(xmin_b, xmax_b)
         y_cand = np.random.uniform(ymin_b, ymax_b)
         if not is_inside_inflated(x_cand, y_cand):
             return (x_cand, y_cand)
 
+
 class WarehouseEnv(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 60}
 
     def __init__(
-            self,
-            width=10.0,
-            height=10.0,
-            rack_obstacles=None,
-            box_obstacles=None,
-            number_of_items=1,
-            delivery_points=None,
-            agent_radius=0.2,
-            step_size=0.2,
+        self,
+        number_of_items=3,
+        agent_radius=0.25,
+        step_size=0.2,
+        extra_obstacles=None,  # List of additional obstacles, if any --> useful for experimenting with humans or boxes in random places
     ):
         super().__init__()
 
-        self.width = width
-        self.height = height
+        self.width = 16.0
+        self.height = 10.0
         self.agent_radius = agent_radius
         self.step_size = step_size
         self.speed = 0
         self.orientation = 0
-        self.agent_angle = 90
-        # Obstacles: list of (x_min, y_min, x_max, y_max)
-        self.racks = rack_obstacles or [
-            (4.0, 2.0, 4.5, 6.0),  # example rack
-            (6.0, 4.0, 6.5, 10.0),
+        self.agent_angle = 45
+        self.max_range = 5 # Maximum range for sensors
+        self.battery_drain_per_step = 0.5  # In reset, the battery is always reset to 100%
+        self.battery_value_reward_charging = 20  # From which battery level to reward the agent for going to the charging station. 
+
+        # Define the layout based on the image
+        self.item_spawn = [(0, 0, 3, 10)]  # Yellow Area: where packages spawn
+        self.racks = [  # Blue Areas: storage racks
+            (5, 8, 9, 9),
+            (11, 8, 14, 9),
+            (5, 5, 7, 6),
+            (8, 5, 10, 6),
+            (5, 2, 15, 3),
+            (5, 0, 10, 1),
+            (11, 0, 15, 1)
         ]
-        self.box_obs = box_obstacles or [
-            (1.0, 5.0, 2.0, 6.0),
-            (7.0, 1.0, 8.0, 2.0),
-        ]
-        self.charger = (4,9,6,10)
-        self.forbidden_zone = (0,8,2,10)
-        self.all_obstacles = self.racks+self.box_obs+[self.forbidden_zone]
+        if extra_obstacles is not None: 
+            self.extra_obstacles = extra_obstacles  # List of additional obstacles, if any
+        else:
+            self.extra_obstacles = []
+
+        self.forbidden_zones = [(11, 4, 13, 7)]  # Red Area: forbidden zones, where the agent can but should not go
+        self.charger = (3.5, 3, 4.5, 5)  # Purple Area: charging area
+
+        # Create delivery zones (grey areas) around the racks
+        self.delivery_zones = self._create_delivery_zones(self.racks, margin=0.5)
+
+        # Combine all obstacles for collision detection 
+        self.all_obstacles = self.racks + self.extra_obstacles
+
+        # Define all items (= packages), there spawn points and the delivery points
         self.number_of_items = number_of_items
         self.item_radius = 0.2
-        self.item_spawn = [(0,0,2,2)]
-        self.item_spawn_center = ((self.item_spawn[0][0]+self.item_spawn[0][2])/2,(self.item_spawn[0][1]+ self.item_spawn[0][3])/2)
+        self.item_spawn_center = ((self.item_spawn[0][0] + self.item_spawn[0][2]) / 2, (self.item_spawn[0][1] + self.item_spawn[0][3]) / 2)
         self.item_starts = sample_points_in_rectangles(self.item_spawn, self.number_of_items, self.item_radius)
-        self.delivery_zones = [(8,0,10,2), (7, 8, 10, 10)]
         self.delivery_radius = agent_radius
         self.delivery_points = sample_points_in_rectangles(self.delivery_zones, self.number_of_items, self.delivery_radius)
+        # Both items and delivery points are linked by index, so item 0 is delivered at delivery point 0, etc.
 
-        # Actions: 0=up,1=down,2=left,3=right
-        self.action_space = spaces.Discrete(5)
+        # Initialize some Gym environment paramters: Necessary for Gym-compatible trainers
+        self.action_space = spaces.Discrete(6)
+        # Give the range of values that the agents state space can take for each feature
+        low = np.array([
+            0.0,   # x / width
+            0.0,   # y / height
+            0.0,   # orientation / 45
+            0.0,   # carrying flag
+            -1.0,  # dist_target_x / width
+            -1.0,  # dist_target_y / height
+            0.0,   # steps_left / max_range
+            0.0,   # steps_fw_left / max_range
+            0.0,   # steps_fw / max_range
+            0.0,   # steps_fw_right / max_range
+            0.0,   # steps_right / max_range
+            0.0,   # item_left / max_range
+            0.0,   # item_fw_left / max_range
+            0.0,   # item_fw / max_range
+            0.0,   # item_fw_right / max_range
+            0.0,   # item_right / max_range
+            0.0    # battery / 100
+        ], dtype=np.float32)
 
-        # Observation: [agent_x, agent_y, orientation, carrying (0/1), target_x, target_y, dist_fw, dist_left, dist_right, item_fw, item_fw_left, item_fw_right, battery]
-        low = np.array([0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], dtype=np.float32)
-        high = np.array(
-            [width, height, 3, 1, width, height, 10, 10, 10, 10, 10, 10, 1], dtype=np.float32
-        )
+        high = np.array([
+            1.0,  # x / width
+            1.0,  # y / height
+            7.0,  # orientation / 45  (possible values: 0…7)
+            1.0,  # carrying flag
+            1.0,  # dist_target_x / width
+            1.0,  # dist_target_y / height
+            1.0,  # steps_left / max_range
+            1.0,  # steps_fw_left / max_range
+            1.0,  # steps_fw / max_range
+            1.0,  # steps_fw_right / max_range
+            1.0,  # steps_right / max_range
+            1.0,  # item_left / max_range
+            1.0,  # item_fw_left / max_range
+            1.0,  # item_fw / max_range
+            1.0,  # item_fw_right / max_range
+            1.0,  # item_right / max_range
+            1.0   # battery / 100
+        ], dtype=np.float32)
+        # Give possible values of observational space
         self.observation_space = spaces.Box(low, high, dtype=np.float32)
 
+        # Call reset to finish initializing the environment
         self.reset()
 
+    def _create_delivery_zones(self, racks, margin):
+        """
+        Creates rectangular delivery zones around a list of storage racks, but make sure that the rectangular delivery areas 
+        do not extend outside the environment boundaries.
+        """
+        delivery_zones = []
+        
+        # Helper function to process each potential zone
+        def add_clipped_zone(xmin, ymin, xmax, ymax):
+            """The created delivery zone rectangles are clipped such that do not extend outside the environment boundaries."""
+            # Ensure delivery rectangle coordinates do not violate the warehouse dimensions (0, 0, width, height)
+            clipped_xmin = max(0, xmin)
+            clipped_ymin = max(0, ymin)
+            clipped_xmax = min(self.width, xmax)
+            clipped_ymax = min(self.height, ymax)
+
+            # Only add the zone if it has a valid, positive area after clipping. This prevents zero-width/height delivery rectangles.
+            if clipped_xmax > clipped_xmin and clipped_ymax > clipped_ymin:
+                delivery_zones.append((clipped_xmin, clipped_ymin, clipped_xmax, clipped_ymax))
+
+        # Iterate over the storage racks to create its surrounding zones
+        for (xmin, ymin, xmax, ymax) in racks:
+            # Calculate rectangle coordinates for all four rectangles along the storage racks
+            
+            add_clipped_zone(xmin - margin, ymax, xmax + margin, ymax + margin)  # Above
+            add_clipped_zone(xmin - margin, ymin - margin, xmax + margin, ymin)  # Below
+            add_clipped_zone(xmin - margin, ymin, xmin, ymax)  # Left
+            add_clipped_zone(xmax, ymin, xmax + margin, ymax)  # Right
+            
+        return delivery_zones
+
     def reset(self, no_gui=True, seed=None, agent_start_pos=False):
+        """
+        Resetting the environment for a new task for the agent. This involves spawning packages/items, delivery points, the agent itself. 
+        It also involves initializing some attributes to the environment and the agent, such as: that it is not carrying any items/packages, 
+        it has not delivered any packages yet, it is at full battery, etc. Finally it computes the initial agent state observation vector.
+        """
         super().reset(seed=seed)
-        self.item_starts = sample_points_in_rectangles(self.item_spawn, self.number_of_items, self.item_radius)
-        self.delivery_points = sample_points_in_rectangles(self.delivery_zones, self.number_of_items, self.delivery_radius)
-        if not agent_start_pos:
-            self.agent_pos = np.array(sample_one_point_outside(self.all_obstacles, self.agent_radius, (0,0,self.width,self.height)))
+        self.item_starts = sample_points_in_rectangles(self.item_spawn, self.number_of_items, self.item_radius)  # spawn/initialize packages/items
+        self.delivery_points = sample_points_in_rectangles(self.delivery_zones, self.number_of_items, self.delivery_radius)  # choose delivery spots
+        if not agent_start_pos:  # randomly sample agent position if none is supplied.
+            self.agent_pos = np.array(sample_one_point_outside(self.all_obstacles, self.agent_radius, (0, 0, self.width, self.height)))
         else:
-            self.agent_pos = np.array(agent_start_pos)
-        self.items = [np.array(pos, dtype=np.float32) for pos in self.item_starts]
+            self.agent_pos = np.array(agent_start_pos)  # Use given starting position
+        self.items = [np.array(pos, dtype=np.float32) for pos in self.item_starts] 
         self.delivered = [False] * len(self.items)
-        self.carrying = -1  # -1 = none, otherwise index of carried item
-        self.battery = 100
+        self.carrying = -1  # -1 = not carrying any items; otherwise this is the index of the item that is at that moment carried by the agent.
+        self.battery = 100  # initializes battery
         self.no_gui = no_gui
         return self._compute_features()
 
 
     def _calc_new_position(self, action):
+        """Calculate the new position and orientation of the agent within the environment."""
         new_speed, sign_orientation = action_to_values(action)
-        # if action == 0 or action == 1:
-        #     self.speed = new_speed
 
         if self.speed == 0 and action==0:
             self.orientation = (self.orientation + sign_orientation*self.agent_angle) % 360
@@ -145,9 +241,11 @@ class WarehouseEnv(gym.Env):
             return new_position
 
     def _calc_collision(self, old_pos, new_position):
+        """Compute if any collisions happened with walls or obstacles."""
         new_pos = new_position.copy()
         collided = False
-        # wall collisions
+
+        # Wall collisions
         if new_pos[0] - self.agent_radius < 0:
             new_pos[0] = self.agent_radius
             collided = True
@@ -161,8 +259,8 @@ class WarehouseEnv(gym.Env):
             new_pos[1] = self.height - self.agent_radius
             collided = True
 
-        # obstacle collisions
-        for (xmin, ymin, xmax, ymax) in self.racks + self.box_obs:
+        # Obstacle collisions
+        for (xmin, ymin, xmax, ymax) in self.all_obstacles:
             closest = np.clip(new_pos, [xmin, ymin], [xmax, ymax])
             delta = new_pos - closest
             dist = np.linalg.norm(delta)
@@ -172,59 +270,76 @@ class WarehouseEnv(gym.Env):
                 if dist > 1e-10:
                     new_pos += (delta / dist) * overlap
                 else:
-                    # fallback: cancel
                     new_pos = old_pos.copy()
                 break
+
         return new_pos, collided
 
     def _update_delivery(self, action):
-        delivered = False
-        pickup=False
-        if action == 4 and self.carrying == -1 and self.speed == 0:
-            for i, (pos, delivered) in enumerate(zip(self.items, self.delivered)):
-                if not delivered and np.linalg.norm(self.agent_pos - pos) < self.agent_radius + self.item_radius:
+        """
+        Update all agent attribute regarding the delivery. Whether the agent is carrying an item, and whether each item is delivered. 
+        Furthermore, for a step it saves whether an item was picked up or delivered, which is important for computing the reward.
+        """
+        item_delivered = False
+        item_picked_up=False
+        if action == 5 and self.carrying == -1 and self.speed == 0:  
+            # If we are performing the pickup action, we are not yet carrying any item and we are standing still we can pick up an item.
+            for i, (pos, delivered_status) in enumerate(zip(self.items, self.delivered)):  
+                # Iterate over all items that can be picked up, and make sure we have info on whether these items have been delivered yet.
+                if not delivered_status and np.linalg.norm(self.agent_pos - pos) < self.agent_radius + self.item_radius:  
+                    # if item is not yet delivered and the radius of the agent and the item are overlapping, we can pick up the item
                     self.carrying = i
-                    pickup=True
+                    item_picked_up = True
                     break
 
-        if self.carrying != -1:
+        if self.carrying != -1:  # If we are carrying an item then we should move the item with the agent
             self.items[self.carrying] = self.agent_pos.copy()
 
         # Deliver
-        if self.carrying != -1 and action == 4 and self.speed == 0:
-            for point in self.delivery_points:
-                if np.linalg.norm(self.agent_pos - point) < self.delivery_radius:
+        if self.carrying != -1 and action == 4 and self.speed == 0:  # If we are carrying an item, we do pickup/dropoff action and we are standing still
+            for i, point in enumerate(self.delivery_points):  
+                if self.carrying == i and np.linalg.norm(self.agent_pos - point) < self.agent_radius + self.delivery_radius:
+                    # Check if item that is being carried and its delivery point correspond, and check if the radius of agent and dropoff point overlap
                     self.delivered[self.carrying] = True
-                    delivered =True
                     self.carrying = -1
+                    item_delivered = True
                     break
 
-        return pickup, delivered
+        return item_picked_up, item_delivered
 
     def _compute_distance_to_wall(self, orientation):
-        max_range = 10 - self.agent_radius
+        """
+        Computing the distance between the agent and the walls and obstacles in the environment. These are important sensors to inform the agent in its task.
+        If there are no walls or obstacles in the agent's line of vision, the max_range that the agent can see with the sensor is returned. 
+        """
+        max_range_from_agent_center = self.max_range + self.agent_radius  # We want to measure from edge of agent
         direction = np.array(orientation_to_directions(orientation))
         current_pos = self.agent_pos.copy()
 
-        for d in np.arange(0, max_range, 0.05):
+        for d in np.arange(0, max_range_from_agent_center, 0.05):
             test_pos = current_pos + direction * d
 
-            # Check wall boundaries
-            if (test_pos[0] < 0 or test_pos[0] > self.width or test_pos[1] < 0 or test_pos[1] > self.height):
-                return d - self.agent_radius
+            # Check wall boundaries of the environmnet
+            if not (0 <= test_pos[0] <= self.width and 0 <= test_pos[1] <= self.height):  # if the test position is not in the environment boundaries
+                return max(d - self.agent_radius, 0)
 
             # Check obstacle collision (racks + box obstacles)
-            for (xmin, ymin, xmax, ymax) in self.racks + self.box_obs:
+            for (xmin, ymin, xmax, ymax) in self.all_obstacles:
                 if xmin <= test_pos[0] <= xmax and ymin <= test_pos[1] <= ymax:
-                    return d - self.agent_radius
+                    return max(d - self.agent_radius, 0)
 
-        return max_range - self.agent_radius
+        return self.max_range  # There is nothing within a self.max_range from the edge of the agent (where sensors are)
 
     def _item_sensor(self, orientation):
-        max_range = 10 + self.agent_radius
+        """
+        Computing the distance between the agent and some items that the agent needs to pick-up. These are important sensors to inform the agent in its task.
+        If there are no items in the line of vision, the max_range that the agent can see with the sensor is returned. 
+        """
+        max_range_from_agent_center = self.max_range + self.agent_radius  # We want to measure from edge of agent
         direction = np.array(orientation_to_directions(orientation))
         current_pos = self.agent_pos.copy()
-        for d in np.arange(0, max_range, 0.05):
+
+        for d in np.arange(0, max_range_from_agent_center, 0.05):
             test_pos = current_pos + direction * d
 
             # Check targets
@@ -233,53 +348,93 @@ class WarehouseEnv(gym.Env):
                 if x-self.item_radius <= test_pos[0] <= x+self.item_radius and y-self.item_radius <= test_pos[1] <= y+self.item_radius and not self.delivered[i] and self.carrying != i:
                     return max(d - self.agent_radius, 0)
 
-        return max_range - self.agent_radius
+        return self.max_range  # There is nothing within a self.max_range from the edge of the agent (where sensors are)
 
     def _update_battery(self):
-        self.battery -= 0.1
+        """All logic for reducing battery level during steps, recharging by standing still in the charging area, and rewarding charging at low battery level"""
+        self.battery -= self.battery_drain_per_step  # Decrease the battery of the agent at each timestep
         old_battery = self.battery
         x, y = self.agent_pos
         xmin, ymin, xmax, ymax = self.charger
-        if xmin <= x <= xmax and ymin <= y <= ymax and self.speed == 0:
+        if xmin <= x <= xmax and ymin <= y <= ymax and self.speed == 0:  # if robot stands still in charging stop the battary is full again.
             self.battery = 100
-            if old_battery <= 10:
+            if old_battery <= self.battery_value_reward_charging:  # only reward charging if battery was actually low
                 return True
         return False
 
     def _compute_dist_to_target(self):
+        """
+        Compute distance between the agent and the next target on the x-axis and the y-axis. Note that when an item is carrying an item/package the target is the delivery point 
+        for this package, but when the agent is not carrying any items the target will be the center of item/package pickup area. This is because we want the agent
+        to find packages, and not have the direct location. Once it finds a package, it scans the package and knows where this package should be delivered. 
+        """
         target_x, target_y = self._compute_target()
         x, y = self.agent_pos
         dist_target_x = target_x - x
         dist_target_y = target_y - y
-        return dist_target_x, dist_target_y
+        return dist_target_x, dist_target_y  # return distance on x and y axis to target
+    
     def _compute_features(self):
+        """
+        Compute the complete observation feature vector that defines the state space of the agent. This consists of:
+        - A distance to wall/object at 5 angles from the agent, with some maximum distance that can be measured
+        - Distance to item that can be picked up at 5 angles from the agent, with some maximum distance that can be measured
+        - A binary indicator indicating if the agent is carrying any items
+        - A distance between agent and the target on x-axis and y-axis
+        """
         x, y = self.agent_pos
 
+        # Distance to wall or object at 5 angles from the agent
         steps_fw = self._compute_distance_to_wall(self.orientation)
-        steps_left = self._compute_distance_to_wall((self.orientation-self.agent_angle)%360) # Left
-        steps_right = self._compute_distance_to_wall((self.orientation+self.agent_angle)%360)  # Right
+        steps_left = self._compute_distance_to_wall((self.orientation-2*self.agent_angle)%360) # Left 90
+        steps_right = self._compute_distance_to_wall((self.orientation+2*self.agent_angle)%360)  # Right 90
+        steps_fw_left = self._compute_distance_to_wall((self.orientation-self.agent_angle)%360) # Left 45
+        steps_fw_right = self._compute_distance_to_wall((self.orientation+self.agent_angle)%360)  # Right 45
+        # Distance to item that can be picked up at 5 angles from the agent
         item_fw = self._item_sensor(self.orientation)
-        item_left = self._item_sensor((self.orientation-self.agent_angle)%360)
-        item_right = self._item_sensor((self.orientation+self.agent_angle)%360)
+        item_left = self._item_sensor((self.orientation-2*self.agent_angle)%360)
+        item_right = self._item_sensor((self.orientation+2*self.agent_angle)%360)
+        item_fw_left = self._item_sensor((self.orientation-self.agent_angle)%360)
+        item_fw_right = self._item_sensor((self.orientation+self.agent_angle)%360)
+        # Binary indicator whether agent is carrying an item
         if self.carrying >= 0:
             carrying = 1
         else:
             carrying = 0
+        # Distance between agent and target on x and y axis.
         dist_target_x, dist_target_y = self._compute_dist_to_target()
 
+        # Combining everything into a single vector
         feature_vector = [x/self.width, y/self.height, self.orientation/self.agent_angle, carrying, dist_target_x/self.width, dist_target_y/self.height,
-                          steps_fw/10, steps_left/10, steps_right/10, item_fw/10, item_left/10, item_right/10,
+                          steps_left/self.max_range, steps_fw_left/self.max_range, steps_fw/self.max_range, steps_fw_right/self.max_range, steps_right/self.max_range,
+                          item_left/self.max_range, item_fw_left/self.max_range, item_fw/self.max_range, item_fw_right/self.max_range, item_right/self.max_range,
                           self.battery/100]
-        # Observation: [agent_x, agent_y, orientation, speed, carrying (0/1), target_x, target_y, dist_fw, dist_left, dist_right, item_fw, item_fw_left, item_fw_right, battery]
+        
         return feature_vector
 
     def _compute_target(self):
+        """
+        When an item is carrying an item/package the target is the delivery point for this package, but when the agent is not carrying any items the target 
+        will be the center of item/package pickup area. This is because we want the agent to find packages, and not have the direct location. Once it finds 
+        a package, it scans the package and knows where this package should be delivered.
+        """
         if self.carrying >= 0:
-            target_x, target_y = self.delivery_points[self.carrying]
+            target_x, target_y = self.delivery_points[self.carrying]  # Location of delivery point of the item that the agent is carrying
         else:
-            target_x, target_y = self.item_spawn_center
+            target_x, target_y = self.item_spawn_center  # Center of the area where items spawn
         return target_x, target_y
+    
     def step(self, action):
+        """
+        All logic that has to be executed upon performing a single time-step in the environment. For this, we use all the logic previously defined for the:
+        - Agents old position
+        - Agents new position (after with potential collisions)
+        - Pick-up/drop-off logic for delivering and carrying items
+        - Updates to battery life of the agent
+        - Computing a reward for the step
+        - Computing when an episode is finished --> if all items are delivered or the battery died
+        - Computing new state (observational feature vector)
+        """
         assert self.action_space.contains(action)
         old_pos = self.agent_pos.copy()
         old_target = self._compute_target()
@@ -289,82 +444,115 @@ class WarehouseEnv(gym.Env):
         pickup, delivered = self._update_delivery(action)
         charged = self._update_battery()
         reward = self._reward_function(pickup, delivered, collided, charged, old_pos)
-        reward += self._shaping_reward(old_pos, old_target)
-        if self.battery == 0 or all(self.delivered):
-            done = True
-        else:
-            done = False
+        reward += self._shaping_reward(old_pos, old_target)  # Used include the improvement with respect to the target in the reward function (g, Harada, & Russell, 1999).
+        done = self.battery <= 0 or all(self.delivered)
 
         return self._compute_features(), reward, done
 
-    def _check_forbidden_zone(self):
+    def _agent_in_forbidden_zone(self):
+        """Check if the agent is in one of the forbidden zones to properly assign a negative reward to this."""
+        in_forbidden_zone = False
         x, y = self.agent_pos
         r = self.agent_radius
-        xmin, ymin, xmax, ymax = self.forbidden_zone
-        return (x + r > xmin and x - r < xmax and
-                y + r > ymin and y - r < ymax)
+        for xmin, ymin, xmax, ymax in self.forbidden_zones:  # Iterate over forbidden zones
+            if (x + r > xmin and x - r < xmax and y + r > ymin and y - r < ymax):
+                in_forbidden_zone = True
+        return in_forbidden_zone  # If not in a forbidden zone then return false
 
     def _reward_function(self, pickup, delivered, collided, charged, old_pos):
+        """
+        Reward function for the agent. It has the following rewards:
+        - negative reward in general for taking a step (we want to obtain an optimal route and thus have a minimal number of steps)
+        - bigger negative reward for staying in the same cell (we want to encourage movement)
+        - positive reward for charging when battery is low (below som given value self.battery_value_reward_charging)
+        - positive reward for pickup up an item/package (logically the agent should pick up items in order to deliver them)
+        - positive reward for delivering an item (this is the main goal of the agent so this receives a high reward)
+        - negative reward for colliding with walls or objects (this can be dangerous for the robot and general workplace safety)
+        - negative reward for being in forbidden places (the agent should just not be in certain areas, altough it can physically move there)
+        - the potential based reward shaping is applied outside this function and provides a reward for moving closer to the target
+        """
         reward = -0.5
-        if old_pos[0]==self.agent_pos[0] and old_pos[1]==self.agent_pos[1]:
+        if np.array_equal(old_pos, self.agent_pos):  # Punish agent for staying in the same position
+            # old_pos[0]==self.agent_pos[0] and old_pos[1]==self.agent_pos[1] 
             reward -= 0.5
-        if charged:
-            reward+=5
-        if pickup:
-            reward+=10
-        if delivered:
-            reward+=100
-        if collided:
-            reward-=2
-        if self._check_forbidden_zone():
-            reward-=2
+        if charged:  # charging when below certain battery value
+            reward += 5
+        if pickup:  # picking up an item
+            reward += 10
+        if delivered:  # delivering an item
+            reward += 100
+        if collided:  # colliding with a wall or object
+            reward -= 2
+        if self._agent_in_forbidden_zone():  # being in a forbidden zone
+            reward -= 2
         return reward
 
     def _shaping_reward(self, old_pos, old_target):
-        gamma=0.99
-        old_distance_to_target = -(abs(old_pos[0]-old_target[0]) + abs(old_pos[1]-old_target[1])) # negative manhattan distance
-        new_distance_to_target = -(abs(self.agent_pos[0]-old_target[0]) + abs(self.agent_pos[1]-old_target[1]))  # negative manhattan distance
+        """Potential based shaping of the reward inspired by (g, Harada, & Russell, 1999)"""
+        gamma = 0.99  # gamma value we use 
+        
+        # Use Manhatten distance when you do no allow diagonal moves:
+        # old_distance_to_target = -(abs(old_pos[0]-old_target[0]) + abs(old_pos[1]-old_target[1])) # negative manhattan distance
+        # new_distance_to_target = -(abs(self.agent_pos[0]-old_target[0]) + abs(self.agent_pos[1]-old_target[1]))  # negative manhattan distance
+        
+        # Use Chebyshev distance when you do allow diagonal moves which are equivalent in number of steps as a 'straight' move:
+        old_distance_to_target = -max(abs(old_pos[0] - old_target[0]), abs(old_pos[1] - old_target[1]))
+        new_distance_to_target = -max(abs(self.agent_pos[0] - old_target[0]), abs(self.agent_pos[1] - old_target[1]))
+
         shaping_reward = gamma*new_distance_to_target - old_distance_to_target
         return shaping_reward
 
-
     def render(self, mode="human"):
+        """This function renders the GUI of the environement allowing us to visually inspect the agents behaviour."""
         if self.no_gui:
             return
         plt.clf()
         ax = plt.gca()
         ax.set_xlim(0, self.width)
         ax.set_ylim(0, self.height)
+        ax.set_aspect('equal', adjustable='box')
 
-        # draw racks and box obstacles
-        xmin, ymin, xmax, ymax = self.forbidden_zone
-        ax.add_patch(Rectangle((xmin, ymin), xmax-xmin, ymax-ymin, color="pink"))
-        xmin, ymin, xmax, ymax = self.charger
-        ax.add_patch(Rectangle((xmin, ymin), xmax-xmin, ymax-ymin, color="lightgreen"))
-        for (xmin, ymin, xmax, ymax) in self.racks:
-            ax.add_patch(Rectangle((xmin, ymin), xmax-xmin, ymax-ymin, color="saddlebrown"))
-        for (xmin, ymin, xmax, ymax) in self.box_obs:
-            ax.add_patch(Rectangle((xmin, ymin), xmax-xmin, ymax-ymin, color="gray"))
+        # Draw Areas
+        # Item Spawn (Yellow)
         for (xmin, ymin, xmax, ymax) in self.item_spawn:
-            ax.add_patch(Rectangle((xmin, ymin), xmax-xmin, ymax-ymin,  fill=False, linestyle="--"))
+            ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="yellow", alpha=0.3))
+        # Delivery Zones (Grey)
         for (xmin, ymin, xmax, ymax) in self.delivery_zones:
-            ax.add_patch(Rectangle((xmin, ymin), xmax-xmin, ymax-ymin, fill=False, linestyle="--"))
+             # Clip zones to be within warehouse boundaries for rendering
+            draw_xmin = max(xmin, 0)
+            draw_ymin = max(ymin, 0)
+            draw_xmax = min(xmax, self.width)
+            draw_ymax = min(ymax, self.height)
+            if draw_xmax > draw_xmin and draw_ymax > draw_ymin:
+                 ax.add_patch(Rectangle((draw_xmin, draw_ymin), draw_xmax - draw_xmin, draw_ymax - draw_ymin, color="grey", alpha=0.3))
 
+        # Draw Obstacles and Charger
+        # Forbidden Zone (Red)
+        xmin, ymin, xmax, ymax = self.forbidden_zones[0]  # TODO: make sure this works for multiple forbidden zones
+        ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="red", alpha=0.5))
+        # Charger (Purple)
+        xmin, ymin, xmax, ymax = self.charger
+        ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="purple", alpha=0.6))
+        # Racks (Blue)
+        for (xmin, ymin, xmax, ymax) in self.racks:
+            ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="blue"))
+
+        # Draw Delivery Points
         for point in self.delivery_points:
-            ax.add_patch(Circle(point, self.delivery_radius, color='red'))
+            ax.add_patch(Circle(point, self.delivery_radius, color='darkred', alpha=0.7))
 
+        # Draw Items (Packages)
         for i, pos in enumerate(self.items):
             if not self.delivered[i] or self.carrying == i:
                 ax.add_patch(Circle(pos, self.item_radius, color="orange"))
 
-
-        # draw agent
-        ax.add_patch(Circle(self.agent_pos, self.agent_radius, color="blue"))
+        # Draw Agent
+        ax.add_patch(Circle(self.agent_pos, self.agent_radius, color="green"))
         direction = np.array(orientation_to_directions(self.orientation))
         dot_pos = self.agent_pos + direction * (self.agent_radius * 0.8)
+        ax.add_patch(Circle(dot_pos, self.agent_radius * 0.15, color="white"))
 
-        ax.add_patch(Circle(dot_pos, self.agent_radius * 0.15, color="yellow"))
-
+        plt.title("Warehouse Simulation")
         plt.pause(1 / self.metadata["render_fps"])
         if mode == "rgb_array":
             return np.frombuffer(plt.gcf().canvas.tostring_rgb(), dtype=np.uint8).reshape(
@@ -372,7 +560,4 @@ class WarehouseEnv(gym.Env):
             )
 
     def close(self):
-        pass
-
-
-
+        plt.close()
