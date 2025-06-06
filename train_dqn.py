@@ -7,7 +7,7 @@ from pathlib import Path
 from tqdm import trange
 
 try:
-    from world.environment_dqn import Environment
+    from world.environment import Environment
     from agents.greedy_agent import GreedyAgent
     from agents.dqn import DQNAgent
 except ModuleNotFoundError:

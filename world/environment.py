@@ -1,473 +1,563 @@
-"""
-Environment.
-"""
-import random
-import datetime
+import gymnasium as gym
+from gymnasium import spaces
 import numpy as np
-from tqdm import trange
-from pathlib import Path
-from warnings import warn
-from time import time, sleep
-from datetime import datetime
-from world.helpers import save_results, action_to_values, orientation_to_directions
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle, Circle
 
-try:
-    from agents import BaseAgent
-    from world.grid import Grid
-    from world.gui import GUI
-    from world.path_visualizer import visualize_path
-except ModuleNotFoundError:
-    from os import path
-    from os import pardir
-    import sys
+def action_to_values(action):
+    """
+    Define what the action integers mean in terms of speed and orientation change. First index of tuple indicates speed, 
+    second index indicates change in orientation in 45 degree increments.
+    """
+    values = {
+        0: (1, 0),      # go
+        1: (0, -2),     # left 90 
+        2: (0, -1),     # left 45 
+        3: (0, 1),      # right 45
+        4: (0, 2),      # right 90
+        5: (0, 0)       # pickup/drop
+    }
+    return values[action]
 
-    root_path = path.abspath(path.join(
-        path.join(path.abspath(__file__), pardir), pardir)
-    )
+def orientation_to_directions(orientation):
+    """What does the orientation in degree mean in terms of x and y direction of a one-unit step."""
+    directions = {
+        0: (0, 1),         # Up
+        45: (1, 1),        # Up-Right
+        90: (1, 0),        # Right
+        135: (1, -1),      # Down-Right
+        180: (0, -1),      # Down
+        225: (-1, -1),     # Down-Left
+        270: (-1, 0),      # Left
+        315: (-1, 1),      # Up-Left
+    }
+    return directions[orientation]
 
-    if root_path not in sys.path:
-        sys.path.append(root_path)
+def sample_points_in_rectangles(rectangles, number_of_items, radius):
+    """Sample package points to spawn packages in package pickup area, and delivery points in drop-off areas around storage racks."""
+    points = []
+    for _ in range(number_of_items):
+        rect = rectangles[np.random.randint(len(rectangles))]
+        x = np.random.uniform(rect[0] + radius, rect[2] - radius)
+        y = np.random.uniform(rect[1] + radius, rect[3] - radius)
+        points.append((x, y))
+    return points
 
-    from agents import BaseAgent
-    from world.grid import Grid
-    from world.gui import GUI
-    from world.path_visualizer import visualize_path
+def sample_one_point_outside(rectangles, radius, bounding_rect):
+    """
+    Sample agents starting position, that it not too close to any of the obstacles. 
+    Gives a set of rectangles, a distance around these rectangles (radius), and a total bounding rectangle within which to sample.
+    """
+    xmin_b, ymin_b, xmax_b, ymax_b = bounding_rect
 
-class Environment:
-    def __init__(self,
-                 grid_fp: Path,
-                 no_gui: bool = False,
-                 sigma: float = 0.,
-                 agent_start_pos: tuple[int, int] = None,
-                 reward_fn: callable = None,
-                 target_fps: int = 30,
-                 random_seed: int | float | str | bytes | bytearray | None = None,
-                 orientation = 0,
-                 target_positions=[None]):
-        
-        """Creates the Grid Environment for the Reinforcement Learning robot
-        from the provided file.
+    # Pre‐compute the 'inflated' rectangles
+    inflated = []
+    for (xmin, ymin, xmax, ymax) in rectangles:
+        inflated.append((xmin - radius, ymin - radius, xmax + radius, ymax + radius))
 
-        This environment follows the general principles of reinforcment
-        learning. It can be thought of as a function E : action -> observation
-        where E is the environment represented as a function.
+    def is_inside_inflated(x, y):
+        for (ixmin, iymin, ixmax, iymax) in inflated:
+            if ixmin <= x <= ixmax and iymin <= y <= iymax:
+                return True
+        return False
 
-        Args:
-            grid_fp: Path to the grid file to use.
-            no_gui: True if no GUI is desired.
-            sigma: The stochasticity of the environment. The probability that
-                the agent makes the move that it has provided as an action is
-                calculated as 1-sigma.
-            agent_start_pos: Tuple where each agent should start.
-                If None is provided, then a random start position is used.
-            reward_fn: Custom reward function to use. 
-            target_fps: How fast the simulation should run if it is being shown
-                in a GUI. If in no_gui mode, then the simulation will run as fast as
-                possible. We may set a low FPS so we can actually see what's
-                happening. Set to 0 or less to unlock FPS.
-            random_seed: The random seed to use for this environment. If None
-                is provided, then the seed will be set to 0.
-        """
-        random.seed(random_seed)
+    # Keep sampling until we find a point that is not inside any of the inflated rectangles
+    while True:
+        x_cand = np.random.uniform(xmin_b, xmax_b)
+        y_cand = np.random.uniform(ymin_b, ymax_b)
+        if not is_inside_inflated(x_cand, y_cand):
+            return (x_cand, y_cand)
 
-        # Initialize Grid
-        if not grid_fp.exists():
-            raise FileNotFoundError(f"Grid {grid_fp} does not exist.")
-        else:
-            self.grid_fp = grid_fp
 
-        # Initialize other variables
-        self.agent_start_pos = agent_start_pos
-        self.terminal_state = False
-        self.sigma = sigma
-              
-        # Set up reward function
-        if reward_fn is None:
-            warn("No reward function provided. Using default reward.")
-            self.reward_fn = self._default_reward_function
-        else:
-            self.reward_fn = reward_fn
+class Environment(gym.Env):
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 60}
 
-        # GUI specific code: Set up the environment as a blank state.
-        self.no_gui = no_gui
-        if target_fps <= 0:
-            self.target_spf = 0.
-        else:
-            self.target_spf = 1. / target_fps
-        self.gui = None
+    def __init__(
+        self,
+        number_of_items=3,
+        agent_radius=0.25,
+        step_size=0.2,
+        extra_obstacles=None,  # List of additional obstacles, if any --> useful for experimenting with humans or boxes in random places
+    ):
+        super().__init__()
 
-        #initial speed
+        self.width = 16.0
+        self.height = 10.0
+        self.agent_radius = agent_radius
+        self.step_size = step_size
         self.speed = 0
+        self.orientation = 0
+        self.agent_angle = 45
+        self.max_range = 5 # Maximum range for sensors
+        self.battery_drain_per_step = 0.5  # In reset, the battery is always reset to 100%
+        self.battery_value_reward_charging = 20  # From which battery level to reward the agent for going to the charging station. 
 
-        #initial orientation
-        self.orientation = orientation
-
-        self.target_positions = target_positions
-
-    def _reset_info(self) -> dict:
-        """Resets the info dictionary.
-
-        info is a dict with information of the most recent step
-        consisting of whether the target was reached or the agent
-        moved and the updated agent position.
-        """
-        return {"target_reached": False,
-                "agent_moved": False,
-                "actual_action": None}
-    
-    @staticmethod
-    def _reset_world_stats() -> dict:
-        """Resets the world stats dictionary.
-
-        world_stats is a dict with information about the 
-        environment since last env.reset(). Basically, it
-        accumulates information.
-        """
-        return {"cumulative_reward": 0,
-                "total_steps": 0,
-                "total_agent_moves": 0,
-                "total_failed_moves": 0,
-                "total_targets_reached": 0,
-                }
-
-    def _initialize_agent_pos(self):
-        """Initializes agent position from the given location or
-        randomly chooses one if None was given.
-        """
-
-        if self.agent_start_pos is not None:
-            pos = (self.agent_start_pos[0], self.agent_start_pos[1])
-            if self.grid[pos] == 0:
-                # Cell is empty. We can place the agent there.
-                self.agent_pos = pos
-            else:
-                raise ValueError(
-                    "Attempted to place agent on top of obstacle, delivery"
-                    "location or charger")
+        # Define the layout based on the image
+        self.item_spawn = [(0, 0, 3, 10)]  # Yellow Area: where packages spawn
+        self.racks = [  # Blue Areas: storage racks
+            (5, 8, 9, 9),
+            (11, 8, 14, 9),
+            (5, 5, 7, 6),
+            (8, 5, 10, 6),
+            (5, 2, 15, 3),
+            (5, 0, 10, 1),
+            (11, 0, 15, 1)
+        ]
+        if extra_obstacles is not None: 
+            self.extra_obstacles = extra_obstacles  # List of additional obstacles, if any
         else:
-            # No positions were given. We place agents randomly.
-            warn("No initial agent positions given. Randomly placing agents "
-                 "on the grid.")
-            # Find all empty locations and choose one at random
-            zeros = np.where(self.grid == 0)
-            idx = random.randint(0, len(zeros[0]) - 1)
-            self.agent_pos = (zeros[0][idx], zeros[1][idx])
+            self.extra_obstacles = []
 
-    def _initialize_target_pos(self):
+        self.forbidden_zones = [(11, 4, 13, 7)]  # Red Area: forbidden zones, where the agent can but should not go
+        self.charger = (3.5, 3, 4.5, 5)  # Purple Area: charging area
 
-        #reset targets
-        self.grid[self.grid == 3] = 0
-        for target in self.target_positions:
-            if target is not None:
-                pos = (target[0], target[1])
-                if self.grid[pos] == 0:
-                    # Cell is empty. We can place the target there.
-                    self.grid[pos] = 3
-                else:
-                    raise ValueError(
-                        "Attempted to place agent on top of obstacle, delivery"
-                        "location or charger")
-            else:
-                # No positions were given. We place agents randomly.
-                warn("No initial target positions given. Randomly placing targets "
-                     "on the grid.")
-                # Find all empty locations and choose one at random
-                zeros = np.where(self.grid == 0)
-                idx = random.randint(0, len(zeros[0]) - 1)
-                self.grid[(zeros[0][idx], zeros[1][idx])] = 3
+        # Create delivery zones (grey areas) around the racks
+        self.delivery_zones = self._create_delivery_zones(self.racks, margin=0.5)
 
-    def reset_env(self, **kwargs) -> tuple[int, int]:
-        """Reset the environment to an initial state.
+        # Combine all obstacles for collision detection 
+        self.all_obstacles = self.racks + self.extra_obstacles
 
-        You can fit it keyword arguments which will overwrite the 
-        initial arguments provided when initializing the environment.
+        # Define all items (= packages), there spawn points and the delivery points
+        self.number_of_items = number_of_items
+        self.item_radius = 0.2
+        self.item_spawn_center = ((self.item_spawn[0][0] + self.item_spawn[0][2]) / 2, (self.item_spawn[0][1] + self.item_spawn[0][3]) / 2)
+        self.item_starts = sample_points_in_rectangles(self.item_spawn, self.number_of_items, self.item_radius)
+        self.delivery_radius = agent_radius
+        self.delivery_points = sample_points_in_rectangles(self.delivery_zones, self.number_of_items, self.delivery_radius)
+        # Both items and delivery points are linked by index, so item 0 is delivered at delivery point 0, etc.
 
-        Args:
-            **kwargs: possible keyword options are the same as those for
-                the environment initializer.
-        Returns:
-             initial state.
+        # Initialize some Gym environment paramters: Necessary for Gym-compatible trainers
+        self.action_space = spaces.Discrete(6)
+        # Give the range of values that the agents state space can take for each feature
+        low = np.array([
+            0.0,   # x / width
+            0.0,   # y / height
+            0.0,   # orientation / 45
+            0.0,   # carrying flag
+            -1.0,  # dist_target_x / width
+            -1.0,  # dist_target_y / height
+            0.0,   # steps_left / max_range
+            0.0,   # steps_fw_left / max_range
+            0.0,   # steps_fw / max_range
+            0.0,   # steps_fw_right / max_range
+            0.0,   # steps_right / max_range
+            0.0,   # item_left / max_range
+            0.0,   # item_fw_left / max_range
+            0.0,   # item_fw / max_range
+            0.0,   # item_fw_right / max_range
+            0.0,   # item_right / max_range
+            0.0    # battery / 100
+        ], dtype=np.float32)
+
+        high = np.array([
+            1.0,  # x / width
+            1.0,  # y / height
+            7.0,  # orientation / 45  (possible values: 0…7)
+            1.0,  # carrying flag
+            1.0,  # dist_target_x / width
+            1.0,  # dist_target_y / height
+            1.0,  # steps_left / max_range
+            1.0,  # steps_fw_left / max_range
+            1.0,  # steps_fw / max_range
+            1.0,  # steps_fw_right / max_range
+            1.0,  # steps_right / max_range
+            1.0,  # item_left / max_range
+            1.0,  # item_fw_left / max_range
+            1.0,  # item_fw / max_range
+            1.0,  # item_fw_right / max_range
+            1.0,  # item_right / max_range
+            1.0   # battery / 100
+        ], dtype=np.float32)
+        # Give possible values of observational space
+        self.observation_space = spaces.Box(low, high, dtype=np.float32)
+
+        # Call reset to finish initializing the environment
+        self.reset()
+
+    def _create_delivery_zones(self, racks, margin):
         """
-        for k, v in kwargs.items():
-            # Go through each possible keyword argument.
-            match k:
-                case "grid_fp":
-                    self.grid_fp = v
-                case "agent_start_pos":
-                    self.agent_start_pos = v
-                case "no_gui":
-                    self.no_gui = v
-                case "target_fps":
-                    self.target_spf = 1. / v
-                case "seed":
-                    self.random_seed = v
-                case _:
-                    raise ValueError(f"{k} is not one of the possible "
-                                     f"keyword arguments.")
+        Creates rectangular delivery zones around a list of storage racks, but make sure that the rectangular delivery areas 
+        do not extend outside the environment boundaries.
+        """
+        delivery_zones = []
         
-        # Reset variables
-        self.grid = Grid.load_grid(self.grid_fp).cells
-        self._initialize_target_pos()
-        self._initialize_agent_pos()
-        self.terminal_state = False
-        self.info = self._reset_info()
-        self.world_stats = self._reset_world_stats()
+        # Helper function to process each potential zone
+        def add_clipped_zone(xmin, ymin, xmax, ymax):
+            """The created delivery zone rectangles are clipped such that do not extend outside the environment boundaries."""
+            # Ensure delivery rectangle coordinates do not violate the warehouse dimensions (0, 0, width, height)
+            clipped_xmin = max(0, xmin)
+            clipped_ymin = max(0, ymin)
+            clipped_xmax = min(self.width, xmax)
+            clipped_ymax = min(self.height, ymax)
 
-        # GUI specific code
-        if not self.no_gui:
-            self.gui = GUI(self.grid.shape)
-            self.gui.reset_gui()
-        else:
-            if self.gui is not None:
-                self.gui.close()
+            # Only add the zone if it has a valid, positive area after clipping. This prevents zero-width/height delivery rectangles.
+            if clipped_xmax > clipped_xmin and clipped_ymax > clipped_ymin:
+                delivery_zones.append((clipped_xmin, clipped_ymin, clipped_xmax, clipped_ymax))
 
-        self.speed  = 0
+        # Iterate over the storage racks to create its surrounding zones
+        for (xmin, ymin, xmax, ymax) in racks:
+            # Calculate rectangle coordinates for all four rectangles along the storage racks
+            
+            add_clipped_zone(xmin - margin, ymax, xmax + margin, ymax + margin)  # Above
+            add_clipped_zone(xmin - margin, ymin - margin, xmax + margin, ymin)  # Below
+            add_clipped_zone(xmin - margin, ymin, xmin, ymax)  # Left
+            add_clipped_zone(xmax, ymin, xmax + margin, ymax)  # Right
+            
+        return delivery_zones
 
-        feature_vector = self._compute_features()
-        return feature_vector
-
-    def _move_agent(self, new_pos: tuple[int, int]):
-        """Moves the agent, if possible and updates the 
-        corresponding stats.
-
-        Args:
-            new_pos: The new position of the agent.
+    def reset(self, no_gui=True, seed=None, agent_start_pos=False):
         """
-
-        match self.grid[new_pos]:
-            case 0 | 5:  # Moved to an empty tile or forbidden tile
-                self.agent_pos = new_pos
-                self.info["agent_moved"] = True
-                self.world_stats["total_agent_moves"] += 1
-            case 1 | 2:  # Moved to a wall or obstacle
-                self.world_stats["total_failed_moves"] += 1
-                self.info["agent_moved"] = False
-                self.speed = 0
-                pass
-            case 3:  # Moved to a target tile
-                self.agent_pos = new_pos
-                self.grid[new_pos] = 0
-                if np.sum(self.grid == 3) == 0:
-                    self.terminal_state = True
-                self.info["target_reached"] = True
-                self.world_stats["total_targets_reached"] += 1
-                self.info["agent_moved"] = True
-                self.world_stats["total_agent_moves"] += 1
-                # Otherwise, the agent can't move and nothing happens
-            case _:
-                raise ValueError(f"Grid is badly formed. It has a value of "
-                                 f"{self.grid[new_pos]} at position "
-                                 f"{new_pos}.")
-
-    def _compute_features(self):
-        """From current self.agent_pos and self.grid, compute:
-           - steps to nearest obstacle in up/down/left/right
-           - dx, dy to nearest remaining target
+        Resetting the environment for a new task for the agent. This involves spawning packages/items, delivery points, the agent itself. 
+        It also involves initializing some attributes to the environment and the agent, such as: that it is not carrying any items/packages, 
+        it has not delivered any packages yet, it is at full battery, etc. Finally it computes the initial agent state observation vector.
         """
-        x, y = self.agent_pos
-
-        # Steps to obstacle
-        def steps(orientation):
-            delta_r, delta_c = orientation_to_directions(orientation)
-            dist = 0
-            sensor_x, sensor_y = x, y
-            while self.grid[sensor_x, sensor_y] != 1 and self.grid[sensor_x, sensor_y] != 2:
-                sensor_x += delta_r
-                sensor_y += delta_c
-                dist += 1
-            return dist
-
-        steps_fw = steps(self.orientation)
-        steps_fw_left = steps((self.orientation-45)%360) # Up-Left
-        steps_fw_right = steps((self.orientation+45)%360)  # Up-Right
-
-        # Distance to nearest target
-        targets = np.argwhere(self.grid == 3)
-        if targets.size == 0:
-            # no targets left
-            dx = dy = 0
+        super().reset(seed=seed)
+        self.item_starts = sample_points_in_rectangles(self.item_spawn, self.number_of_items, self.item_radius)  # spawn/initialize packages/items
+        self.delivery_points = sample_points_in_rectangles(self.delivery_zones, self.number_of_items, self.delivery_radius)  # choose delivery spots
+        if not agent_start_pos:  # randomly sample agent position if none is supplied.
+            self.agent_pos = np.array(sample_one_point_outside(self.all_obstacles, self.agent_radius, (0, 0, self.width, self.height)))
         else:
-            # Manhattan distance
-            dists = np.abs(targets - np.array([y, x])).sum(axis=1)
-            idx   = np.argmin(dists)
-            target_x, target_y = targets[idx]
-            dx, dy = target_x - x, target_y - y
-        feature_vector = np.array([x, y,
-                                   self.speed, self.orientation/360,
-                                   steps_fw, steps_fw_left, steps_fw_right,
-                                   dx, dy])
-        return feature_vector
+            self.agent_pos = np.array(agent_start_pos)  # Use given starting position
+        self.items = [np.array(pos, dtype=np.float32) for pos in self.item_starts] 
+        self.delivered = [False] * len(self.items)
+        self.carrying = -1  # -1 = not carrying any items; otherwise this is the index of the item that is at that moment carried by the agent.
+        self.battery = 100  # initializes battery
+        self.no_gui = no_gui
+        return self._compute_features()
+
 
     def _calc_new_position(self, action):
+        """Calculate the new position and orientation of the agent within the environment."""
         new_speed, sign_orientation = action_to_values(action)
-        if action == 0 or action == 1:
-            self.speed = new_speed
 
-        if self.speed == 1:
-            self.orientation = (self.orientation + sign_orientation*45) % 360
+        if self.speed == 0 and action==0:
+            self.orientation = (self.orientation + sign_orientation*self.agent_angle) % 360
             direction = orientation_to_directions(self.orientation)
-            new_position = (self.agent_pos[0] + direction[0], self.agent_pos[1] + direction[1])
+            new_position = np.array([self.agent_pos[0] + self.step_size*direction[0], self.agent_pos[1] + self.step_size*direction[1]])
             return new_position
         else:
-            self.orientation = (self.orientation + sign_orientation*45) % 360
+            self.orientation = (self.orientation + sign_orientation*self.agent_angle) % 360
             new_position = self.agent_pos
             return new_position
 
+    def _calc_collision(self, old_pos, new_position):
+        """Compute if any collisions happened with walls or obstacles."""
+        new_pos = new_position.copy()
+        collided = False
 
+        # Wall collisions
+        if new_pos[0] - self.agent_radius < 0:
+            new_pos[0] = self.agent_radius
+            collided = True
+        if new_pos[0] + self.agent_radius > self.width:
+            new_pos[0] = self.width - self.agent_radius
+            collided = True
+        if new_pos[1] - self.agent_radius < 0:
+            new_pos[1] = self.agent_radius
+            collided = True
+        if new_pos[1] + self.agent_radius > self.height:
+            new_pos[1] = self.height - self.agent_radius
+            collided = True
 
-    def step(self, action: int) -> tuple[np.ndarray, float, bool]:
-        """This function makes the agent take a step on the grid.
-
-        Action is provided as integer and values are:
-            - 0: Move down
-            - 1: Move up
-            - 2: Move left
-            - 3: Move right
-        Args:
-            action: Integer representing the action the agent should
-                take. 
-
-        Returns:
-            0) Current state,
-            1) The reward for the agent,
-            2) If the terminal state has been reached, and
-        """
-        
-        self.world_stats["total_steps"] += 1
-        
-        # GUI specific code
-        is_single_step = False
-        if not self.no_gui:
-            start_time = time()
-            while self.gui.paused:
-                # If the GUI is paused but asking to step, then we step
-                if self.gui.step:
-                    is_single_step = True
-                    self.gui.step = False
-                    break
-                # Otherwise, we render the current state only
-                paused_info = self._reset_info()
-                paused_info["agent_moved"] = True
-                self.gui.render(self.grid, self.agent_pos, self.orientation, paused_info,
-                                0, is_single_step)    
-
-        # Add stochasticity into the agent action
-        val = random.random()
-        if val > self.sigma:
-            actual_action = action
-        else:
-            actual_action = random.randint(0, 3)
-        
-        # Make the move
-        self.info["actual_action"] = actual_action
-        new_pos = self._calc_new_position(actual_action)
-
-        # Calculate the reward for the agent
-        reward = self.reward_fn(self.grid, new_pos)
-
-        self._move_agent(new_pos)
-        
-        self.world_stats["cumulative_reward"] += reward
-
-        # GUI specific code
-        if not self.no_gui:
-            time_to_wait = self.target_spf - (time() - start_time)
-            if time_to_wait > 0:
-                sleep(time_to_wait)
-            self.gui.render(self.grid, self.agent_pos, self.orientation, self.info,
-                            reward, is_single_step)
-        feature_vector = self._compute_features()
-        return feature_vector, reward, self.terminal_state, self.info
-
-    @staticmethod
-    def _default_reward_function(grid, agent_pos) -> float:
-        """This is a very simple reward function. Feel free to adjust it.
-        Any custom reward function must also follow the same signature, meaning
-        it must be written like `reward_name(grid, temp_agent_pos)`.
-
-        Args:
-            grid: The grid the agent is moving on, in case that is needed by
-                the reward function.
-            agent_pos: The position the agent is moving to.
-
-        Returns:
-            A single floating point value representing the reward for a given
-            action.
-        """
-
-        match grid[agent_pos]:
-            case 0:  # Moved to an empty tile
-                reward = -1
-            case 1:  # Moved to a wall
-                reward = -5
-            case 2:  # Moved to a obstacle
-                reward = -10
-            case 3:  # Moved to a target tile
-                reward = 1000
-                # "Illegal move"
-            case 5: # forbidden zone
-                reward = -5
-            case _:
-                raise ValueError(f"Grid cell should not have value: {grid[agent_pos]}.",
-                                 f"at position {agent_pos}")
-        return reward
-
-    @staticmethod
-    def evaluate_agent(grid_fp: Path,
-                       agent: BaseAgent,
-                       max_steps: int,
-                       sigma: float = 0.,
-                       agent_start_pos: tuple[int, int] = None,
-                       random_seed: int | float | str | bytes | bytearray = 0,
-                       show_images: bool = False):
-        """Evaluates a single trained agent's performance.
-
-        What this does is it creates a completely new environment from the
-        provided grid and does a number of steps _without_ processing rewards
-        for the agent. This means that the agent doesn't learn here and simply
-        provides actions for any provided observation.
-
-        For each evaluation run, this produces a statistics file in the out
-        directory which is a txt. This txt contains the values:
-        [ 'total_steps`, `total_failed_moves`]
-
-        Args:
-            grid_fp: Path to the grid file to use.
-            agent: Trained agent to evaluate.
-            max_steps: Max number of steps to take.
-            sigma: same as abve.
-            agent_start_pos: same as above.
-            random_seed: same as above.
-            show_images: Whether to show the images at the end of the
-                evaluation. If False, only saves the images.
-        """
-
-        env = Environment(grid_fp=grid_fp,
-                          no_gui=True,
-                          sigma=sigma,
-                          agent_start_pos=agent_start_pos,
-                          target_fps=-1,
-                          random_seed=random_seed)
-        
-        state = env.reset_env()
-        initial_grid = np.copy(env.grid)
-
-        # Add initial agent position to the path
-        agent_path = [env.agent_pos]
-
-        for _ in trange(max_steps, desc="Evaluating agent"):
-            
-            action = agent.take_action(state)
-            state, _, terminated, _ = env.step(action)
-
-            agent_path.append(state)
-
-            if terminated:
+        # Obstacle collisions
+        for (xmin, ymin, xmax, ymax) in self.all_obstacles:
+            closest = np.clip(new_pos, [xmin, ymin], [xmax, ymax])
+            delta = new_pos - closest
+            dist = np.linalg.norm(delta)
+            if dist < self.agent_radius:
+                collided = True
+                overlap = self.agent_radius - dist
+                if dist > 1e-10:
+                    new_pos += (delta / dist) * overlap
+                else:
+                    new_pos = old_pos.copy()
                 break
 
-        env.world_stats["targets_remaining"] = np.sum(env.grid == 3)
+        return new_pos, collided
 
-        path_image = visualize_path(initial_grid, agent_path)
-        file_name = datetime.now().strftime("%Y-%m-%d__%H-%M-%S")
+    def _update_delivery(self, action):
+        """
+        Update all agent attribute regarding the delivery. Whether the agent is carrying an item, and whether each item is delivered. 
+        Furthermore, for a step it saves whether an item was picked up or delivered, which is important for computing the reward.
+        """
+        item_delivered = False
+        item_picked_up=False
+        if action == 5 and self.carrying == -1 and self.speed == 0:  
+            # If we are performing the pickup action, we are not yet carrying any item and we are standing still we can pick up an item.
+            for i, (pos, delivered_status) in enumerate(zip(self.items, self.delivered)):  
+                # Iterate over all items that can be picked up, and make sure we have info on whether these items have been delivered yet.
+                if not delivered_status and np.linalg.norm(self.agent_pos - pos) < self.agent_radius + self.item_radius:  
+                    # if item is not yet delivered and the radius of the agent and the item are overlapping, we can pick up the item
+                    self.carrying = i
+                    item_picked_up = True
+                    break
 
-        save_results(file_name, env.world_stats, path_image, show_images)
+        if self.carrying != -1:  # If we are carrying an item then we should move the item with the agent
+            self.items[self.carrying] = self.agent_pos.copy()
+
+        # Deliver
+        if self.carrying != -1 and action == 4 and self.speed == 0:  # If we are carrying an item, we do pickup/dropoff action and we are standing still
+            for i, point in enumerate(self.delivery_points):  
+                if self.carrying == i and np.linalg.norm(self.agent_pos - point) < self.agent_radius + self.delivery_radius:
+                    # Check if item that is being carried and its delivery point correspond, and check if the radius of agent and dropoff point overlap
+                    self.delivered[self.carrying] = True
+                    self.carrying = -1
+                    item_delivered = True
+                    break
+
+        return item_picked_up, item_delivered
+
+    def _compute_distance_to_wall(self, orientation):
+        """
+        Computing the distance between the agent and the walls and obstacles in the environment. These are important sensors to inform the agent in its task.
+        If there are no walls or obstacles in the agent's line of vision, the max_range that the agent can see with the sensor is returned. 
+        """
+        max_range_from_agent_center = self.max_range + self.agent_radius  # We want to measure from edge of agent
+        direction = np.array(orientation_to_directions(orientation))
+        current_pos = self.agent_pos.copy()
+
+        for d in np.arange(0, max_range_from_agent_center, 0.05):
+            test_pos = current_pos + direction * d
+
+            # Check wall boundaries of the environmnet
+            if not (0 <= test_pos[0] <= self.width and 0 <= test_pos[1] <= self.height):  # if the test position is not in the environment boundaries
+                return max(d - self.agent_radius, 0)
+
+            # Check obstacle collision (racks + box obstacles)
+            for (xmin, ymin, xmax, ymax) in self.all_obstacles:
+                if xmin <= test_pos[0] <= xmax and ymin <= test_pos[1] <= ymax:
+                    return max(d - self.agent_radius, 0)
+
+        return self.max_range  # There is nothing within a self.max_range from the edge of the agent (where sensors are)
+
+    def _item_sensor(self, orientation):
+        """
+        Computing the distance between the agent and some items that the agent needs to pick-up. These are important sensors to inform the agent in its task.
+        If there are no items in the line of vision, the max_range that the agent can see with the sensor is returned. 
+        """
+        max_range_from_agent_center = self.max_range + self.agent_radius  # We want to measure from edge of agent
+        direction = np.array(orientation_to_directions(orientation))
+        current_pos = self.agent_pos.copy()
+
+        for d in np.arange(0, max_range_from_agent_center, 0.05):
+            test_pos = current_pos + direction * d
+
+            # Check targets
+            for i, item_pos in enumerate(self.item_starts):
+                x, y = item_pos
+                if x-self.item_radius <= test_pos[0] <= x+self.item_radius and y-self.item_radius <= test_pos[1] <= y+self.item_radius and not self.delivered[i] and self.carrying != i:
+                    return max(d - self.agent_radius, 0)
+
+        return self.max_range  # There is nothing within a self.max_range from the edge of the agent (where sensors are)
+
+    def _update_battery(self):
+        """All logic for reducing battery level during steps, recharging by standing still in the charging area, and rewarding charging at low battery level"""
+        self.battery -= self.battery_drain_per_step  # Decrease the battery of the agent at each timestep
+        old_battery = self.battery
+        x, y = self.agent_pos
+        xmin, ymin, xmax, ymax = self.charger
+        if xmin <= x <= xmax and ymin <= y <= ymax and self.speed == 0:  # if robot stands still in charging stop the battary is full again.
+            self.battery = 100
+            if old_battery <= self.battery_value_reward_charging:  # only reward charging if battery was actually low
+                return True
+        return False
+
+    def _compute_dist_to_target(self):
+        """
+        Compute distance between the agent and the next target on the x-axis and the y-axis. Note that when an item is carrying an item/package the target is the delivery point 
+        for this package, but when the agent is not carrying any items the target will be the center of item/package pickup area. This is because we want the agent
+        to find packages, and not have the direct location. Once it finds a package, it scans the package and knows where this package should be delivered. 
+        """
+        target_x, target_y = self._compute_target()
+        x, y = self.agent_pos
+        dist_target_x = target_x - x
+        dist_target_y = target_y - y
+        return dist_target_x, dist_target_y  # return distance on x and y axis to target
+    
+    def _compute_features(self):
+        """
+        Compute the complete observation feature vector that defines the state space of the agent. This consists of:
+        - A distance to wall/object at 5 angles from the agent, with some maximum distance that can be measured
+        - Distance to item that can be picked up at 5 angles from the agent, with some maximum distance that can be measured
+        - A binary indicator indicating if the agent is carrying any items
+        - A distance between agent and the target on x-axis and y-axis
+        """
+        x, y = self.agent_pos
+
+        # Distance to wall or object at 5 angles from the agent
+        steps_fw = self._compute_distance_to_wall(self.orientation)
+        steps_left = self._compute_distance_to_wall((self.orientation-2*self.agent_angle)%360) # Left 90
+        steps_right = self._compute_distance_to_wall((self.orientation+2*self.agent_angle)%360)  # Right 90
+        steps_fw_left = self._compute_distance_to_wall((self.orientation-self.agent_angle)%360) # Left 45
+        steps_fw_right = self._compute_distance_to_wall((self.orientation+self.agent_angle)%360)  # Right 45
+        # Distance to item that can be picked up at 5 angles from the agent
+        item_fw = self._item_sensor(self.orientation)
+        item_left = self._item_sensor((self.orientation-2*self.agent_angle)%360)
+        item_right = self._item_sensor((self.orientation+2*self.agent_angle)%360)
+        item_fw_left = self._item_sensor((self.orientation-self.agent_angle)%360)
+        item_fw_right = self._item_sensor((self.orientation+self.agent_angle)%360)
+        # Binary indicator whether agent is carrying an item
+        if self.carrying >= 0:
+            carrying = 1
+        else:
+            carrying = 0
+        # Distance between agent and target on x and y axis.
+        dist_target_x, dist_target_y = self._compute_dist_to_target()
+
+        # Combining everything into a single vector
+        feature_vector = [x/self.width, y/self.height, self.orientation/self.agent_angle, carrying, dist_target_x/self.width, dist_target_y/self.height,
+                          steps_left/self.max_range, steps_fw_left/self.max_range, steps_fw/self.max_range, steps_fw_right/self.max_range, steps_right/self.max_range,
+                          item_left/self.max_range, item_fw_left/self.max_range, item_fw/self.max_range, item_fw_right/self.max_range, item_right/self.max_range,
+                          self.battery/100]
+        
+        return feature_vector
+
+    def _compute_target(self):
+        """
+        When an item is carrying an item/package the target is the delivery point for this package, but when the agent is not carrying any items the target 
+        will be the center of item/package pickup area. This is because we want the agent to find packages, and not have the direct location. Once it finds 
+        a package, it scans the package and knows where this package should be delivered.
+        """
+        if self.carrying >= 0:
+            target_x, target_y = self.delivery_points[self.carrying]  # Location of delivery point of the item that the agent is carrying
+        else:
+            target_x, target_y = self.item_spawn_center  # Center of the area where items spawn
+        return target_x, target_y
+    
+    def step(self, action):
+        """
+        All logic that has to be executed upon performing a single time-step in the environment. For this, we use all the logic previously defined for the:
+        - Agents old position
+        - Agents new position (after with potential collisions)
+        - Pick-up/drop-off logic for delivering and carrying items
+        - Updates to battery life of the agent
+        - Computing a reward for the step
+        - Computing when an episode is finished --> if all items are delivered or the battery died
+        - Computing new state (observational feature vector)
+        """
+        assert self.action_space.contains(action)
+        old_pos = self.agent_pos.copy()
+        old_target = self._compute_target()
+        new_pos = self._calc_new_position(action)
+        correct_new_pos, collided = self._calc_collision(old_pos, new_pos)
+        self.agent_pos = correct_new_pos
+        pickup, delivered = self._update_delivery(action)
+        charged = self._update_battery()
+        reward = self._reward_function(pickup, delivered, collided, charged, old_pos)
+        reward += self._shaping_reward(old_pos, old_target)  # Used include the improvement with respect to the target in the reward function (g, Harada, & Russell, 1999).
+        done = self.battery <= 0 or all(self.delivered)
+
+        return self._compute_features(), reward, done
+
+    def _agent_in_forbidden_zone(self):
+        """Check if the agent is in one of the forbidden zones to properly assign a negative reward to this."""
+        in_forbidden_zone = False
+        x, y = self.agent_pos
+        r = self.agent_radius
+        for xmin, ymin, xmax, ymax in self.forbidden_zones:  # Iterate over forbidden zones
+            if (x + r > xmin and x - r < xmax and y + r > ymin and y - r < ymax):
+                in_forbidden_zone = True
+        return in_forbidden_zone  # If not in a forbidden zone then return false
+
+    def _reward_function(self, pickup, delivered, collided, charged, old_pos):
+        """
+        Reward function for the agent. It has the following rewards:
+        - negative reward in general for taking a step (we want to obtain an optimal route and thus have a minimal number of steps)
+        - bigger negative reward for staying in the same cell (we want to encourage movement)
+        - positive reward for charging when battery is low (below som given value self.battery_value_reward_charging)
+        - positive reward for pickup up an item/package (logically the agent should pick up items in order to deliver them)
+        - positive reward for delivering an item (this is the main goal of the agent so this receives a high reward)
+        - negative reward for colliding with walls or objects (this can be dangerous for the robot and general workplace safety)
+        - negative reward for being in forbidden places (the agent should just not be in certain areas, altough it can physically move there)
+        - the potential based reward shaping is applied outside this function and provides a reward for moving closer to the target
+        """
+        reward = -0.5
+        if np.array_equal(old_pos, self.agent_pos):  # Punish agent for staying in the same position
+            # old_pos[0]==self.agent_pos[0] and old_pos[1]==self.agent_pos[1] 
+            reward -= 0.5
+        if charged:  # charging when below certain battery value
+            reward += 5
+        if pickup:  # picking up an item
+            reward += 10
+        if delivered:  # delivering an item
+            reward += 100
+        if collided:  # colliding with a wall or object
+            reward -= 2
+        if self._agent_in_forbidden_zone():  # being in a forbidden zone
+            reward -= 2
+        return reward
+
+    def _shaping_reward(self, old_pos, old_target):
+        """Potential based shaping of the reward inspired by (g, Harada, & Russell, 1999)"""
+        gamma = 0.99  # gamma value we use 
+        
+        # Use Manhatten distance when you do no allow diagonal moves:
+        # old_distance_to_target = -(abs(old_pos[0]-old_target[0]) + abs(old_pos[1]-old_target[1])) # negative manhattan distance
+        # new_distance_to_target = -(abs(self.agent_pos[0]-old_target[0]) + abs(self.agent_pos[1]-old_target[1]))  # negative manhattan distance
+        
+        # Use Chebyshev distance when you do allow diagonal moves which are equivalent in number of steps as a 'straight' move:
+        old_distance_to_target = -max(abs(old_pos[0] - old_target[0]), abs(old_pos[1] - old_target[1]))
+        new_distance_to_target = -max(abs(self.agent_pos[0] - old_target[0]), abs(self.agent_pos[1] - old_target[1]))
+
+        shaping_reward = gamma*new_distance_to_target - old_distance_to_target
+        return shaping_reward
+
+    def render(self, mode="human"):
+        """This function renders the GUI of the environement allowing us to visually inspect the agents behaviour."""
+        if self.no_gui:
+            return
+        plt.clf()
+        ax = plt.gca()
+        ax.set_xlim(0, self.width)
+        ax.set_ylim(0, self.height)
+        ax.set_aspect('equal', adjustable='box')
+
+        # Draw Areas
+        # Item Spawn (Yellow)
+        for (xmin, ymin, xmax, ymax) in self.item_spawn:
+            ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="yellow", alpha=0.3))
+        # Delivery Zones (Grey)
+        for (xmin, ymin, xmax, ymax) in self.delivery_zones:
+             # Clip zones to be within warehouse boundaries for rendering
+            draw_xmin = max(xmin, 0)
+            draw_ymin = max(ymin, 0)
+            draw_xmax = min(xmax, self.width)
+            draw_ymax = min(ymax, self.height)
+            if draw_xmax > draw_xmin and draw_ymax > draw_ymin:
+                 ax.add_patch(Rectangle((draw_xmin, draw_ymin), draw_xmax - draw_xmin, draw_ymax - draw_ymin, color="grey", alpha=0.3))
+
+        # Draw Obstacles and Charger
+        # Forbidden Zone (Red)
+        xmin, ymin, xmax, ymax = self.forbidden_zones[0]  # TODO: make sure this works for multiple forbidden zones
+        ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="red", alpha=0.5))
+        # Charger (Purple)
+        xmin, ymin, xmax, ymax = self.charger
+        ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="purple", alpha=0.6))
+        # Racks (Blue)
+        for (xmin, ymin, xmax, ymax) in self.racks:
+            ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="blue"))
+
+        # Draw Delivery Points
+        for point in self.delivery_points:
+            ax.add_patch(Circle(point, self.delivery_radius, color='darkred', alpha=0.7))
+
+        # Draw Items (Packages)
+        for i, pos in enumerate(self.items):
+            if not self.delivered[i] or self.carrying == i:
+                ax.add_patch(Circle(pos, self.item_radius, color="orange"))
+
+        # Draw Agent
+        ax.add_patch(Circle(self.agent_pos, self.agent_radius, color="green"))
+        direction = np.array(orientation_to_directions(self.orientation))
+        dot_pos = self.agent_pos + direction * (self.agent_radius * 0.8)
+        ax.add_patch(Circle(dot_pos, self.agent_radius * 0.15, color="white"))
+
+        plt.title("Warehouse Simulation")
+        plt.pause(1 / self.metadata["render_fps"])
+        if mode == "rgb_array":
+            return np.frombuffer(plt.gcf().canvas.tostring_rgb(), dtype=np.uint8).reshape(
+                plt.gcf().canvas.get_width_height()[::-1] + (3,)
+            )
+
+    def close(self):
+        plt.close()
