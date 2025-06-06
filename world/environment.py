@@ -58,7 +58,7 @@ def sample_one_point_outside(rectangles, radius, bounding_rect):
             return (x_cand, y_cand)
 
 class WarehouseEnv(gym.Env):
-    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 60}
 
     def __init__(
             self,
@@ -113,10 +113,14 @@ class WarehouseEnv(gym.Env):
 
         self.reset()
 
-    def reset(self, no_gui=True, seed=None):
+    def reset(self, no_gui=True, seed=None, agent_start_pos=False):
         super().reset(seed=seed)
-
-        self.agent_pos = np.array(sample_one_point_outside(self.all_obstacles, self.agent_radius, (0,0,self.width,self.height)))
+        self.item_starts = sample_points_in_rectangles(self.item_spawn, self.number_of_items, self.item_radius)
+        self.delivery_points = sample_points_in_rectangles(self.delivery_zones, self.number_of_items, self.delivery_radius)
+        if not agent_start_pos:
+            self.agent_pos = np.array(sample_one_point_outside(self.all_obstacles, self.agent_radius, (0,0,self.width,self.height)))
+        else:
+            self.agent_pos = np.array(agent_start_pos)
         self.items = [np.array(pos, dtype=np.float32) for pos in self.item_starts]
         self.delivered = [False] * len(self.items)
         self.carrying = -1  # -1 = none, otherwise index of carried item
@@ -307,9 +311,9 @@ class WarehouseEnv(gym.Env):
         if charged:
             reward+=5
         if pickup:
-            reward+=100
+            reward+=10
         if delivered:
-            reward+=200
+            reward+=100
         if collided:
             reward-=2
         if self._check_forbidden_zone():
