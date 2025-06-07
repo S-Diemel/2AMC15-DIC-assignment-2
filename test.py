@@ -3,7 +3,7 @@ import time
 
 # Test script to show how curriculum learning works and to test the environment
 
-for i in range(4):
+for i in range(100):
 
     if i == 0:
         difficulty = None
@@ -15,10 +15,10 @@ for i in range(4):
         difficulty = 2
 
     env = Environment()
-    obs = env.reset(no_gui=False, seed=0, difficulty=difficulty)
+    obs = env.reset(no_gui=False, seed=0, difficulty=difficulty, extra_obstacles=[(1,1,2,2)])
     done = False
 
-    for _ in range(50):  # Note very little steps for illustration purposes, because random agent
+    for _ in range(5):  # Note very little steps for illustration purposes, because random agent
         
         env.render()
         action = env.action_space.sample()

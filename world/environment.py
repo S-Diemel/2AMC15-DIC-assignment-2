@@ -37,30 +37,65 @@ def orientation_to_directions(orientation):
 
 
 def point_in_rectangle(x, y, rect):
+    """Checks if a point occurs in a single rectangle or not."""
     xmin, ymin, xmax, ymax = rect
     return xmin <= x <= xmax and ymin <= y <= ymax
 
 
-def sample_points_in_rectangles(rectangles, number_of_items, radius, difficulty_region=None):
+def is_inside_set_of_rectangles(x, y, set_of_rectangles):
+    """Checks whether a point (x, y) occurs within a set of rectangles and returns True if it occurs in at least one of the rectangles"""
+    for rect in set_of_rectangles:
+        if point_in_rectangle(x, y, rect):
+            return True
+    return False
+
+
+def sample_points_in_rectangles(rectangles, number_of_items, radius, obstacles, difficulty_region=None):
     """
-    Sample package points to spawn packages in package pickup area, and delivery points in drop-off areas around storage racks.
-    Furthermore, the optional difficulty region allows us to sample only points that are within a certain difficulty region of the
+    Sample package points to spawn packages in package pickup area, and delivery points in drop-off areas around storage racks. So we provide
+    rectangles to sample within. Then to determine whether a sampled location is valid we check three conditions:
+
+    1. If a difficulty region is given, the point must be within this difficulty region
+    2. The point cannot be within an obstacle, but it can overlap with obstacles as long as the agent can reach the item or delivery point
+    3. The point cannot overlap with each other. The reason for this is that it negatively impacts the rendering (GUI)
+    
+    The optional difficulty region allows us to sample only points that are within a certain difficulty region of the
     warehouse. The easier the difficulty region, the closer the delivery points will be to the package spawn area. 
     """
     points = []
+    min_dist = 2 * radius  # between points
+
     for _ in range(number_of_items):
-        valid_point = False
-        while not valid_point:
+        while True:
+            # pick a random rect and uniform point inside it (with `radius` margin)
             rect = rectangles[np.random.randint(len(rectangles))]
             x = np.random.uniform(rect[0] + radius, rect[2] - radius)
             y = np.random.uniform(rect[1] + radius, rect[3] - radius)
-            if difficulty_region is None:
-                points.append((x, y))
-                valid_point = True
-            else:
-                if point_in_rectangle(x, y, difficulty_region):
-                    points.append((x, y))
-                    valid_point = True
+
+            # Three conditions for a sampled point to be valid
+            # If difficulty_region is given, the sampled data point must be within it
+            if difficulty_region is not None:
+                if not point_in_rectangle(x, y, difficulty_region):
+                    continue
+
+            # The sampled data point cannot be inside an obstacle (but it can overlap) as long as agent can reach it
+            if is_inside_set_of_rectangles(x, y, obstacles):
+                continue
+
+            # The sampled data point cannot overlap with another already sampled datapoint, as this negatively impacts
+            # the rendering (GUI).
+            too_close = False
+            for (px, py) in points:
+                if np.sqrt((x - px) ** 2 + (y - py) ** 2) < min_dist:
+                    too_close = True
+                    break
+            if too_close:
+                continue
+
+            # Append the point if all conditions are satisfied, and the point is thus valid
+            points.append((x, y))
+            break
+
     return points
 
 
@@ -70,6 +105,7 @@ def sample_one_point_outside(rectangles, radius, bounding_rect, difficulty_regio
     Gives a set of rectangles, a distance around these rectangles (radius), and a total bounding rectangle within which to sample.
     Furthermore, the optional difficulty regrion allows us to sample only points that are within a certain difficulty region of the
     warehouse. The easier the difficulty region, the closer the agents spawn will be to the package spawn area. 
+    Detail: the agent can spawn in forbidden zones to make it learn to leave them quickly, and it can spawn in the package spawn area.
     """
     xmin_b, ymin_b, xmax_b, ymax_b = bounding_rect
 
@@ -78,21 +114,15 @@ def sample_one_point_outside(rectangles, radius, bounding_rect, difficulty_regio
     for (xmin, ymin, xmax, ymax) in rectangles:
         inflated.append((xmin - radius, ymin - radius, xmax + radius, ymax + radius))
 
-    def is_inside_inflated(x, y):
-        for (ixmin, iymin, ixmax, iymax) in inflated:
-            if ixmin <= x <= ixmax and iymin <= y <= iymax:
-                return True
-        return False
-
     # Keep sampling until we find a point that is not inside any of the inflated rectangles
     while True:
         x_cand = np.random.uniform(xmin_b, xmax_b)
         y_cand = np.random.uniform(ymin_b, ymax_b)
         if difficulty_region is not None:
-            if not is_inside_inflated(x_cand, y_cand) and point_in_rectangle(x_cand, y_cand, difficulty_region):
+            if not is_inside_set_of_rectangles(x_cand, y_cand, inflated) and point_in_rectangle(x_cand, y_cand, difficulty_region):
                 return (x_cand, y_cand)
         else:
-            if not is_inside_inflated(x_cand, y_cand):
+            if not is_inside_set_of_rectangles(x_cand, y_cand, inflated):
                 return (x_cand, y_cand)
 
 
@@ -109,7 +139,7 @@ class Environment(gym.Env):
     ):
         super().__init__()
 
-        self.width = 16.0
+        self.width = 20.0
         self.height = 10.0
         self.agent_radius = agent_radius
         self.step_size = step_size
@@ -121,31 +151,36 @@ class Environment(gym.Env):
         self.battery_value_reward_charging = 20  # From which battery level to reward the agent for going to the charging station. 
 
         # Define the layout based on the image
-        self.item_spawn = [(0, 0, 3, self.height)]  # Yellow Area: where packages spawn
+        width_spawn_area = 3
+        self.item_spawn = [(0, 0, width_spawn_area, self.height)]  # Yellow Area: where packages spawn
         assert len(self.item_spawn) == 1, "The environment allows only a single item spawn, due to some inherent design choices and scope limitation." 
 
+        half_width_of_rack = 0.5
         self.racks = [  # Blue Areas: storage racks
-            (5, 8, 9, 9),
-            (11, 8, 14, 9),
-            (5, 5, 7, 6),
-            (8, 5, 10, 6),
-            (5, 2, 15, 3),
-            (5, 0, 10, 1),
-            (11, 0, 15, 1)
+            # xmin, ymin, xmax, ymax
+            # Storage racks around along the walls
+            (5, self.height - half_width_of_rack, self.width, self.height),  # top
+            (7, 0, self.width, half_width_of_rack),  # bottom
+            (self.width-half_width_of_rack, half_width_of_rack, self.width, self.height-half_width_of_rack),  # right
+            # First row of storage racks
+            (5, self.height - 6 * half_width_of_rack, 12, self.height - 4 * half_width_of_rack),
+            (13.5, self.height - 6 * half_width_of_rack, 18, self.height - 4 * half_width_of_rack),
+            # Second row of storage racks
+            (5, self.height - 11 * half_width_of_rack, 9, self.height - 9 * half_width_of_rack),
+            (10, self.height - 11 * half_width_of_rack, 12, self.height - 9 * half_width_of_rack),
+            # Third row of storage racks
+            (5, self.height - 16 * half_width_of_rack, 18, self.height - 14 * half_width_of_rack)
         ]
         if extra_obstacles is not None: 
             self.extra_obstacles = extra_obstacles  # List of additional obstacles, if any
         else:
             self.extra_obstacles = []
 
-        self.forbidden_zones = [(11, 4, 13, 7)]  # Red Area: forbidden zones, where the agent can but should not go
-        self.charger = (3.5, 3, 4.5, 5)  # Purple Area: charging area
+        self.forbidden_zones = [(14, self.height - 12 * half_width_of_rack, 17.5, self.height - 8 * half_width_of_rack)]  # Red Area: forbidden zones, where the agent can but should not go
+        self.charger = (3.5, 0, 6, 1)  # Green Area: charging area
 
         # Create delivery zones (grey areas) around the racks
         self.delivery_zones = self._create_delivery_zones(self.racks, margin=0.5)
-
-        # Combine all obstacles for collision detection 
-        self.all_obstacles = self.racks + self.extra_obstacles
 
         # For CURRICULUM LEARNING: define the difficulty of the environment by constraining the agent starting position and delivery points
         self.difficulty = difficulty
@@ -205,18 +240,24 @@ class Environment(gym.Env):
         # Call reset to finish initializing the environment
         self.reset()
     
-    def reset(self, no_gui=True, seed=None, agent_start_pos=False, difficulty=None):
+    def reset(self, no_gui=True, seed=None, agent_start_pos=False, difficulty=None, extra_obstacles=None):
         """
         Resetting the environment for a new task for the agent. This involves spawning packages/items, delivery points, the agent itself. 
         It also involves initializing some attributes to the environment and the agent, such as: that it is not carrying any items/packages, 
         it has not delivered any packages yet, it is at full battery, etc. Finally it computes the initial agent state observation vector.
         """
         super().reset(seed=seed)
+        if extra_obstacles is not None:
+            self.extra_obstacles = extra_obstacles
+            # Implicit else: we keep the self.extra_obstacles from the initialization above, which is an empty list for None
+        # Combine all obstacles for collision detection 
+        self.all_obstacles = self.racks + self.extra_obstacles
+        print(self.all_obstacles)
         if difficulty is not None:
             self.difficulty = difficulty
         self.difficulty_region = self._set_difficulty_of_env(self.difficulty)  # For curriculum learning set the difficulty of the environment
-        self.item_starts = sample_points_in_rectangles(self.item_spawn, self.number_of_items, self.item_radius)  # spawn/initialize packages/items
-        self.delivery_points = sample_points_in_rectangles(self.delivery_zones, self.number_of_items, self.delivery_radius, self.difficulty_region)  # choose delivery spots
+        self.item_starts = sample_points_in_rectangles(self.item_spawn, self.number_of_items, self.item_radius, self.all_obstacles)  # spawn/initialize packages/items
+        self.delivery_points = sample_points_in_rectangles(self.delivery_zones, self.number_of_items, self.delivery_radius, self.all_obstacles, self.difficulty_region)  # choose delivery spots
         if not agent_start_pos:  # randomly sample agent position if none is supplied.
             self.agent_pos = np.array(sample_one_point_outside(self.all_obstacles, self.agent_radius, (0, 0, self.width, self.height), self.difficulty_region))
         else:
@@ -552,7 +593,7 @@ class Environment(gym.Env):
         shaping_reward = gamma*new_distance_to_target - old_distance_to_target
         return shaping_reward
 
-    def render(self, mode="human", show_difficulty_region=True):
+    def render(self, mode="human", show_difficulty_region=False):
         """This function renders the GUI of the environement allowing us to visually inspect the agents behaviour."""
         if self.no_gui:
             return
@@ -565,7 +606,7 @@ class Environment(gym.Env):
         # Draw Areas
         # Item Spawn (Yellow)
         for (xmin, ymin, xmax, ymax) in self.item_spawn:
-            ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="yellow", alpha=0.3))
+            ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="#fdeeac", alpha=0.75))
         # Delivery Zones (Grey)
         for (xmin, ymin, xmax, ymax) in self.delivery_zones:
              # Clip zones to be within warehouse boundaries for rendering
@@ -574,37 +615,68 @@ class Environment(gym.Env):
             draw_xmax = min(xmax, self.width)
             draw_ymax = min(ymax, self.height)
             if draw_xmax > draw_xmin and draw_ymax > draw_ymin:
-                 ax.add_patch(Rectangle((draw_xmin, draw_ymin), draw_xmax - draw_xmin, draw_ymax - draw_ymin, color="grey", alpha=0.3))
+                 ax.add_patch(Rectangle((draw_xmin, draw_ymin), draw_xmax - draw_xmin, draw_ymax - draw_ymin, color="#eeeded"))
 
         # Draw Obstacles and Charger
         # Forbidden Zone (Red)
         for (xmin, ymin, xmax, ymax) in self.forbidden_zones:
-            ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="red", alpha=0.5))
-        # Charger (Purple)
+            ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="#fa6e6e", alpha=0.75))
+        # Charger (Green)
         xmin, ymin, xmax, ymax = self.charger
-        ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="purple", alpha=0.6))
+        ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="#81fd8b", alpha=0.75))
         # Racks (Blue)
         for (xmin, ymin, xmax, ymax) in self.racks:
-            ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="blue"))
+            ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="#7881ff"))
+        # Extra obstacles (Dark grey)
+        for (xmin, ymin, xmax, ymax) in self.extra_obstacles:
+            ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="#636363"))
 
         # Draw Delivery Points
-        for point in self.delivery_points:
-            ax.add_patch(Circle(point, self.delivery_radius, color='darkred', alpha=0.7))
+        for i, point in enumerate(self.delivery_points):
+            if self.carrying == i:  # Make delivery point more clearly visible when carrying the item for that delivery point
+                ax.add_patch(Circle(point, self.delivery_radius, color='darkred', alpha=0.85))
+            else:
+                ax.add_patch(Circle(point, self.delivery_radius, color='darkred', alpha=0.3))
+            ax.text(
+                point[0], point[1],       # x, y
+                str(i),                   # number itself
+                color='white',            # text color
+                ha='center', va='center', 
+                fontsize=7,              
+                fontweight='bold',
+                zorder=10                 # make sure it overlays the delivery point patch
+            )
 
         # Draw Items (Packages)
-        for i, pos in enumerate(self.items):
+        for i, point in enumerate(self.items):
             if not self.delivered[i] or self.carrying == i:
-                ax.add_patch(Circle(pos, self.item_radius, color="orange"))
-
+                ax.add_patch(Circle(point, self.item_radius, color="orange"))
+                ax.text(
+                    point[0], point[1],       # x, y
+                    str(i),                   # number itself
+                    color='white',            # text color
+                    ha='center', va='center', 
+                    fontsize=7,              
+                    fontweight='bold',
+                    zorder=10                 # make sure it overlays the delivery point patch
+                )
+                
         if show_difficulty_region:
             if self.difficulty_region is not None:
                 xmin, ymin, xmax, ymax = self.difficulty_region
-                ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="green", alpha=0.25))
+                ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="green", alpha=0.2))
 
         # Draw Agent
-        ax.add_patch(Circle(self.agent_pos, self.agent_radius, color="green"))
-        direction = np.array(orientation_to_directions(self.orientation))
-        dot_pos = self.agent_pos + direction * (self.agent_radius * 0.8)
+        if self.carrying > -1:  # Give orange edge to agent when carrying an item
+            ax.add_patch(Circle(self.agent_pos, self.agent_radius, facecolor="#00A800", edgecolor="orange", linewidth=2))
+        else:
+            ax.add_patch(Circle(self.agent_pos, self.agent_radius, color="#00A800"))
+        # Compute where the white dot which expresses the agents orientation should be 
+        # -> for 45 degree orientations we need to use the unit circle to make sure that white circle is on the agent. 
+        dir_vec = np.array(orientation_to_directions(self.orientation), dtype=float)
+        dir_unit = dir_vec / np.linalg.norm(dir_vec)
+        dot_offset = self.agent_radius * 0.75 
+        dot_pos = self.agent_pos + dir_unit * dot_offset
         ax.add_patch(Circle(dot_pos, self.agent_radius * 0.15, color="white"))
 
         plt.title("Warehouse Simulation")
