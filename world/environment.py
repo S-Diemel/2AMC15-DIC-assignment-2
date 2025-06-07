@@ -731,21 +731,23 @@ class Environment(gym.Env):
 
         if show_full_legend:
             legend_env_info = [
-                Patch(facecolor="#fdeeac", edgecolor="none", alpha=0.75, label="Item Spawn"),
-                Patch(facecolor="#eeeded", edgecolor="none", label="Delivery Zone"),
-                Patch(facecolor="#fa6e6e", edgecolor="none", alpha=0.75, label="Forbidden Zone"),
-                Patch(facecolor="#81fd8b", edgecolor="none", alpha=0.75, label="Charger"),
-                Patch(facecolor="#7881ff", edgecolor="none", label="Storage racks"),
-                Patch(facecolor="#636363", edgecolor="none", label="Extra Obstacle"),
-                Patch(facecolor="darkred", edgecolor="none", alpha=0.3, label="Delivery Point"),
-                Patch(facecolor="orange", edgecolor="none", label="Item"),
                 Line2D([0], [0],
                     marker='o', markersize=10,
                     markerfacecolor="#00A800",
                     markeredgecolor="orange" if self.carrying > -1 else "#00A800",
                     linestyle="None",
-                    label="Agent"),
+                    label="Agent"
+                ),
+                Patch(facecolor="#fdeeac", edgecolor="none", alpha=0.75, label="Item Spawn"),
+                Patch(facecolor="#eeeded", edgecolor="none", label="Delivery Zone"),
+                Patch(facecolor="#fa6e6e", edgecolor="none", alpha=0.75, label="Forbidden Zone"),
+                Patch(facecolor="#81fd8b", edgecolor="none", alpha=0.75, label="Charger"),
+                Patch(facecolor="#7881ff", edgecolor="none", label="Storage racks"),
+                Patch(facecolor="darkred", edgecolor="none", alpha=0.3, label="Delivery Point"),
+                Patch(facecolor="orange", edgecolor="none", label="Item"),
             ]
+            if len(self.extra_obstacles) > 0:
+                legend_env_info += [Patch(facecolor="#636363", edgecolor="none", label="Extra Obstacle")]
             # ax.legend(handles=legend_elements, loc="upper right", bbox_to_anchor=(1.15,1))
             legend2 = ax.legend(
                 handles=legend_env_info,

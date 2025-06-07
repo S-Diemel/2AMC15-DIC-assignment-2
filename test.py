@@ -15,7 +15,7 @@ for i in range(100):
         difficulty = 2
 
     env = Environment()
-    obs = env.reset(no_gui=False, seed=0, difficulty=difficulty, extra_obstacles=[(1,1,2,2)])
+    obs = env.reset(no_gui=False, seed=0, difficulty=difficulty) # , extra_obstacles=[(1,1,2,2)])
     done = False
 
     for _ in range(5):  # Note very little steps for illustration purposes, because random agent
