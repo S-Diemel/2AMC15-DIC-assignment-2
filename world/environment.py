@@ -2,7 +2,8 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle, Circle
+from matplotlib.patches import Rectangle, Circle, Patch
+from matplotlib.lines import Line2D
 
 
 def action_to_values(action):
@@ -178,6 +179,7 @@ class Environment(gym.Env):
 
         self.forbidden_zones = [(14, self.height - 12 * half_width_of_rack, 17.5, self.height - 8 * half_width_of_rack)]  # Red Area: forbidden zones, where the agent can but should not go
         self.charger = (3.5, 0, 6, 1)  # Green Area: charging area
+        self.charger_center = ((self.charger[0] + self.charger[2]) / 2, (self.charger[1] + self.charger[3]) / 2)
 
         # Create delivery zones (grey areas) around the racks
         self.delivery_zones = self._create_delivery_zones(self.racks, margin=0.5)
@@ -237,6 +239,11 @@ class Environment(gym.Env):
         # Give possible values of observational space
         self.observation_space = spaces.Box(low, high, dtype=np.float32)
 
+        # Maintaining statistics
+        self.cumulative_reward = 0
+        self.total_nr_collisions = 0
+        self.total_nr_steps = 0
+
         # Call reset to finish initializing the environment
         self.reset()
     
@@ -252,7 +259,6 @@ class Environment(gym.Env):
             # Implicit else: we keep the self.extra_obstacles from the initialization above, which is an empty list for None
         # Combine all obstacles for collision detection 
         self.all_obstacles = self.racks + self.extra_obstacles
-        print(self.all_obstacles)
         if difficulty is not None:
             self.difficulty = difficulty
         self.difficulty_region = self._set_difficulty_of_env(self.difficulty)  # For curriculum learning set the difficulty of the environment
@@ -498,8 +504,7 @@ class Environment(gym.Env):
         # Combining everything into a single vector
         feature_vector = [x/self.width, y/self.height, self.orientation/self.agent_angle, carrying, dist_target_x/self.width, dist_target_y/self.height,
                           steps_left/self.max_range, steps_fw_left/self.max_range, steps_fw/self.max_range, steps_fw_right/self.max_range, steps_right/self.max_range,
-                          item_left/self.max_range, item_fw_left/self.max_range, item_fw/self.max_range, item_fw_right/self.max_range, item_right/self.max_range,
-                          self.battery/100]
+                          item_left/self.max_range, item_fw_left/self.max_range, item_fw/self.max_range, item_fw_right/self.max_range, item_right/self.max_range]
         
         return feature_vector
 
@@ -509,10 +514,13 @@ class Environment(gym.Env):
         will be the center of item/package pickup area. This is because we want the agent to find packages, and not have the direct location. Once it finds 
         a package, it scans the package and knows where this package should be delivered.
         """
-        if self.carrying >= 0:
-            target_x, target_y = self.delivery_points[self.carrying]  # Location of delivery point of the item that the agent is carrying
+        if self.battery < self.battery_value_reward_charging:
+            target_x, target_y = self.charger_center
         else:
-            target_x, target_y = self.item_spawn_center  # Center of the area where items spawn
+            if self.carrying >= 0:
+                target_x, target_y = self.delivery_points[self.carrying]  # Location of delivery point of the item that the agent is carrying
+            else:
+                target_x, target_y = self.item_spawn_center  # Center of the area where items spawn
         return target_x, target_y
     
     def step(self, action):
@@ -537,7 +545,11 @@ class Environment(gym.Env):
         reward = self._reward_function(pickup, delivered, collided, charged, old_pos)
         reward += self._shaping_reward(old_pos, old_target)  # Used include the improvement with respect to the target in the reward function (g, Harada, & Russell, 1999).
         done = self.battery <= 0 or all(self.delivered)
-
+        # Update some statistics
+        self.cumulative_reward += reward
+        self.total_nr_steps += 1
+        if collided:
+            self.total_nr_collisions += 1
         return self._compute_features(), reward, done
 
     def _agent_in_forbidden_zone(self):
@@ -593,20 +605,35 @@ class Environment(gym.Env):
         shaping_reward = gamma*new_distance_to_target - old_distance_to_target
         return shaping_reward
 
-    def render(self, mode="human", show_difficulty_region=False):
+    def render(self, mode="human", show_full_legend=True, show_difficulty_region=False):
         """This function renders the GUI of the environement allowing us to visually inspect the agents behaviour."""
+        # Return nothing if GUI is turned off
         if self.no_gui:
             return
+        
+        # Initializing the environement.
         plt.clf()
         ax = plt.gca()
         ax.set_xlim(0, self.width)
         ax.set_ylim(0, self.height)
         ax.set_aspect('equal', adjustable='box')
 
+        # Turn of the ticks and number on the axes, because they are not relevant for the GUI
+        ax.set_xticks([])
+        ax.set_yticks([])
+
+        # Give room for a side legend
+        fig = ax.get_figure()
+        if show_full_legend:
+            fig.subplots_adjust(left=0.2, right=0.8)
+        else:
+            fig.subplots_adjust(right=0.8)
+
         # Draw Areas
         # Item Spawn (Yellow)
         for (xmin, ymin, xmax, ymax) in self.item_spawn:
             ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="#fdeeac", alpha=0.75))
+
         # Delivery Zones (Grey)
         for (xmin, ymin, xmax, ymax) in self.delivery_zones:
              # Clip zones to be within warehouse boundaries for rendering
@@ -617,21 +644,23 @@ class Environment(gym.Env):
             if draw_xmax > draw_xmin and draw_ymax > draw_ymin:
                  ax.add_patch(Rectangle((draw_xmin, draw_ymin), draw_xmax - draw_xmin, draw_ymax - draw_ymin, color="#eeeded"))
 
-        # Draw Obstacles and Charger
         # Forbidden Zone (Red)
         for (xmin, ymin, xmax, ymax) in self.forbidden_zones:
             ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="#fa6e6e", alpha=0.75))
+
         # Charger (Green)
         xmin, ymin, xmax, ymax = self.charger
         ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="#81fd8b", alpha=0.75))
+
         # Racks (Blue)
         for (xmin, ymin, xmax, ymax) in self.racks:
             ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="#7881ff"))
+
         # Extra obstacles (Dark grey)
         for (xmin, ymin, xmax, ymax) in self.extra_obstacles:
             ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="#636363"))
 
-        # Draw Delivery Points
+        # Draw Delivery Points --> with numbers and correct dynamics
         for i, point in enumerate(self.delivery_points):
             if self.carrying == i:  # Make delivery point more clearly visible when carrying the item for that delivery point
                 ax.add_patch(Circle(point, self.delivery_radius, color='darkred', alpha=0.85))
@@ -660,7 +689,8 @@ class Environment(gym.Env):
                     fontweight='bold',
                     zorder=10                 # make sure it overlays the delivery point patch
                 )
-                
+
+        # Potentially show difficulty region for sampling with curriculum learning      
         if show_difficulty_region:
             if self.difficulty_region is not None:
                 xmin, ymin, xmax, ymax = self.difficulty_region
@@ -678,6 +708,56 @@ class Environment(gym.Env):
         dot_offset = self.agent_radius * 0.75 
         dot_pos = self.agent_pos + dir_unit * dot_offset
         ax.add_patch(Circle(dot_pos, self.agent_radius * 0.15, color="white"))
+
+        # Add a legend to the GUI for better understanding:
+        # battery, cum hazard, bumps into obstacles, total steps
+        legend_stats = [
+            Line2D([0], [0], linestyle="None", label=f"Battery: {self.battery:.1f}%"),
+            Line2D([0], [0], linestyle="None", label=f"Total Steps: {self.total_nr_steps:.0f}"),
+            Line2D([0], [0], linestyle="None", label=f"Cumulative Reward: {self.cumulative_reward:.0f}"),
+            Line2D([0], [0], linestyle="None", label=f"Total Collisions: {self.total_nr_collisions:.0f}")
+        ]
+        legend1 = ax.legend(
+            handles=legend_stats,
+            loc="upper left",
+            bbox_to_anchor=(1.02, 1),
+            title="Episode statistics:",               
+            title_fontsize="medium",      
+            borderaxespad=0,
+            handlelength=0,  
+            handletextpad=0  
+        )
+        ax.add_artist(legend1)
+
+        if show_full_legend:
+            legend_env_info = [
+                Patch(facecolor="#fdeeac", edgecolor="none", alpha=0.75, label="Item Spawn"),
+                Patch(facecolor="#eeeded", edgecolor="none", label="Delivery Zone"),
+                Patch(facecolor="#fa6e6e", edgecolor="none", alpha=0.75, label="Forbidden Zone"),
+                Patch(facecolor="#81fd8b", edgecolor="none", alpha=0.75, label="Charger"),
+                Patch(facecolor="#7881ff", edgecolor="none", label="Storage racks"),
+                Patch(facecolor="#636363", edgecolor="none", label="Extra Obstacle"),
+                Patch(facecolor="darkred", edgecolor="none", alpha=0.3, label="Delivery Point"),
+                Patch(facecolor="orange", edgecolor="none", label="Item"),
+                Line2D([0], [0],
+                    marker='o', markersize=10,
+                    markerfacecolor="#00A800",
+                    markeredgecolor="orange" if self.carrying > -1 else "#00A800",
+                    linestyle="None",
+                    label="Agent"),
+            ]
+            # ax.legend(handles=legend_elements, loc="upper right", bbox_to_anchor=(1.15,1))
+            legend2 = ax.legend(
+                handles=legend_env_info,
+                loc="upper right",
+                bbox_to_anchor=(-0.02, 1),   
+                title="Environment info:",               
+                title_fontsize="medium",       
+                frameon=True,
+                borderaxespad=0,
+                labelspacing=0.5
+            )
+            ax.add_artist(legend2)
 
         plt.title("Warehouse Simulation")
         plt.pause(1 / self.metadata["render_fps"])
