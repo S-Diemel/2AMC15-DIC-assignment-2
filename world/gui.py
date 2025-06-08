@@ -1,307 +1,169 @@
-"""GUI.
-
-Provides a GUI for the environment using pygame.
-"""
-import sys
-from time import perf_counter, sleep
-
 import numpy as np
-import pygame
-from pygame import gfxdraw
-import math
+import matplotlib.pyplot as plt
+from matplotlib.patches import Rectangle, Circle, Patch
+from matplotlib.lines import Line2D
+from world.utils.action_mapping import orientation_to_directions
 
 
-class GUI:
-    CELL_COLORS = [
-        (255, 255, 255),  # Empty cell
-        (57, 57, 57),     # Boundary cell
-        (255, 119, 0),     # Obstacle cell
-        (34, 139, 34),    # target cell
-        (0, 255, 255),    # Charger cell
-        (255, 127, 127)   # forbidden cell
-    ]
-    INFO_NAME_MAP = [
-        ("cumulative_reward", "Cumulative reward:"),
-        ("total_steps", "Total steps:"),
-        ("total_failed_move", "Total failed moves:"),
-        # ("total_targets_reached", "Total targets reached:"),
-        ("fps", "FPS:"),
-    ]
+def render_gui(self, mode="human", show_full_legend=True, show_difficulty_region=False):
+    """This function renders the GUI of the environement allowing us to visually inspect the agents behaviour."""
+    # Return nothing if GUI is turned off
+    if self.no_gui:
+        return
+    
+    # Initializing the environement.
+    plt.clf()
+    ax = plt.gca()
+    ax.set_xlim(0, self.width)
+    ax.set_ylim(0, self.height)
+    ax.set_aspect('equal', adjustable='box')
 
-    def __init__(self, grid_size: tuple[int, int],
-                 window_size: tuple[int, int] = (1152, 768)):
-        """Provides a GUI to show what is happening in the environment.
+    # Turn of the ticks and number on the axes, because they are not relevant for the GUI
+    ax.set_xticks([])
+    ax.set_yticks([])
 
-        Args:
-            grid_size: (n_cols, n_rows) in the grid.
-            window_size: The size of the pygame window. (width, height).
-        """
-        self.grid_size = grid_size
+    # Give room for a side legend
+    fig = ax.get_figure()
+    if show_full_legend:
+        fig.subplots_adjust(left=0.2, right=0.8)
+    else:
+        fig.subplots_adjust(right=0.8)
 
-        pygame.init()
-        pygame.display.init()
-        self.window = pygame.display.set_mode(window_size)
-        pygame.display.set_caption("Data Intelligence Challenge 2024")
-        self.clock = pygame.time.Clock()
+    # Draw Areas
+    # Item Spawn (Yellow)
+    for (xmin, ymin, xmax, ymax) in self.item_spawn:
+        ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="#fdeeac", alpha=0.75))
 
-        self.stats = self._reset_stats()
+    # Delivery Zones (Grey)
+    for (xmin, ymin, xmax, ymax) in self.delivery_zones:
+            # Clip zones to be within warehouse boundaries for rendering
+        draw_xmin = max(xmin, 0)
+        draw_ymin = max(ymin, 0)
+        draw_xmax = min(xmax, self.width)
+        draw_ymax = min(ymax, self.height)
+        if draw_xmax > draw_xmin and draw_ymax > draw_ymin:
+                ax.add_patch(Rectangle((draw_xmin, draw_ymin), draw_xmax - draw_xmin, draw_ymax - draw_ymin, color="#eeeded"))
 
-        self.grid_panel_size = (int(window_size[0] * 0.75), window_size[1])
-        self.info_panel_rect = pygame.Rect(
-            self.grid_panel_size[0],
-            0,
-            window_size[0] - self.grid_panel_size[0],
-            window_size[1]
+    # Forbidden Zone (Red)
+    for (xmin, ymin, xmax, ymax) in self.forbidden_zones:
+        ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="#fa6e6e", alpha=0.75))
+
+    # Charger (Green)
+    xmin, ymin, xmax, ymax = self.charger
+    ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="#81fd8b", alpha=0.75))
+
+    # Racks (Blue)
+    for (xmin, ymin, xmax, ymax) in self.racks:
+        ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="#7881ff"))
+
+    # Extra obstacles (Dark grey)
+    for (xmin, ymin, xmax, ymax) in self.extra_obstacles:
+        ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="#636363"))
+
+    # Draw Delivery Points --> with numbers and correct dynamics
+    for i, point in enumerate(self.delivery_points):
+        if self.carrying == i:  # Make delivery point more clearly visible when carrying the item for that delivery point
+            ax.add_patch(Circle(point, self.delivery_radius, color='darkred', alpha=0.85))
+        else:
+            ax.add_patch(Circle(point, self.delivery_radius, color='darkred', alpha=0.3))
+        ax.text(
+            point[0], point[1],       # x, y
+            str(i),                   # number itself
+            color='white',            # text color
+            ha='center', va='center', 
+            fontsize=7,              
+            fontweight='bold',
+            zorder=10                 # make sure it overlays the delivery point patch
         )
-        self.last_agent_pos = None
 
-        self.paused = False
-        self.paused_clicked = False
-        self.step = False
-        self.step_clicked = False
+    # Draw Items (Packages)
+    for i, point in enumerate(self.items):
+        if not self.delivered[i] or self.carrying == i:
+            ax.add_patch(Circle(point, self.item_radius, color="orange"))
+            ax.text(
+                point[0], point[1],       # x, y
+                str(i),                   # number itself
+                color='white',            # text color
+                ha='center', va='center', 
+                fontsize=7,              
+                fontweight='bold',
+                zorder=10                 # make sure it overlays the delivery point patch
+            )
 
-        # Find the smallest window dimension and max grid size to calculate the
-        # grid scalar
-        self.scalar = min(self.grid_panel_size)
-        self.scalar /= max(self.grid_size) * 1.2
+    # Potentially show difficulty region for sampling with curriculum learning      
+    if show_difficulty_region:
+        if self.difficulty_region is not None:
+            xmin, ymin, xmax, ymax = self.difficulty_region
+            ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="green", alpha=0.2))
 
-        # FPS timer
-        self.last_render_time = perf_counter()
-        self.last_10_fps = [0., 0., 0., 0., 0., 0., 0., 0., 0., 0.]
-        self.frame_count = 0
+    # Draw Agent
+    if self.carrying > -1:  # Give orange edge to agent when carrying an item
+        ax.add_patch(Circle(self.agent_pos, self.agent_radius, facecolor="#00A800", edgecolor="orange", linewidth=2))
+    else:
+        ax.add_patch(Circle(self.agent_pos, self.agent_radius, color="#00A800"))
+    # Compute where the white dot which expresses the agents orientation should be 
+    # -> for 45 degree orientations we need to use the unit circle to make sure that white circle is on the agent. 
+    dir_vec = np.array(orientation_to_directions(self.orientation), dtype=float)
+    dir_unit = dir_vec / np.linalg.norm(dir_vec)
+    dot_offset = self.agent_radius * 0.75 
+    dot_pos = self.agent_pos + dir_unit * dot_offset
+    ax.add_patch(Circle(dot_pos, self.agent_radius * 0.15, color="white"))
 
-        self._initial_render()
+    # Add a legend to the GUI for better understanding:
+    # battery, cum hazard, bumps into obstacles, total steps
+    legend_stats = [
+        Line2D([0], [0], linestyle="None", label=f"Battery: {self.battery:.1f}%"),
+        Line2D([0], [0], linestyle="None", label=f"Total Steps: {self.total_nr_steps:.0f}"),
+        Line2D([0], [0], linestyle="None", label=f"Cumulative Reward: {self.cumulative_reward:.0f}"),
+        Line2D([0], [0], linestyle="None", label=f"Total Collisions: {self.total_nr_collisions:.0f}")
+    ]
+    legend1 = ax.legend(
+        handles=legend_stats,
+        loc="upper left",
+        bbox_to_anchor=(1.02, 1),
+        title="Episode statistics:",               
+        title_fontsize="medium",      
+        borderaxespad=0,
+        handlelength=0,  
+        handletextpad=0  
+    )
+    ax.add_artist(legend1)
 
-    def reset_gui(self):
-        """Called during the reset method of the environment."""
-        self.stats = self._reset_stats()
-        self._initial_render()
+    if show_full_legend:
+        legend_env_info = [
+            Line2D([0], [0],
+                marker='o', markersize=10,
+                markerfacecolor="#00A800",
+                markeredgecolor="orange" if self.carrying > -1 else "#00A800",
+                linestyle="None",
+                label="Agent"
+            ),
+            Patch(facecolor="#fdeeac", edgecolor="none", alpha=0.75, label="Item Spawn"),
+            Patch(facecolor="#eeeded", edgecolor="none", label="Delivery Zone"),
+            Patch(facecolor="#fa6e6e", edgecolor="none", alpha=0.75, label="Forbidden Zone"),
+            Patch(facecolor="#81fd8b", edgecolor="none", alpha=0.75, label="Charger"),
+            Patch(facecolor="#7881ff", edgecolor="none", label="Storage racks"),
+            Patch(facecolor="darkred", edgecolor="none", alpha=0.3, label="Delivery Point"),
+            Patch(facecolor="orange", edgecolor="none", label="Item"),
+        ]
+        if len(self.extra_obstacles) > 0:
+            legend_env_info += [Patch(facecolor="#636363", edgecolor="none", label="Extra Obstacle")]
+        # ax.legend(handles=legend_elements, loc="upper right", bbox_to_anchor=(1.15,1))
+        legend2 = ax.legend(
+            handles=legend_env_info,
+            loc="upper right",
+            bbox_to_anchor=(-0.02, 1),   
+            title="Environment info:",               
+            title_fontsize="medium",       
+            frameon=True,
+            borderaxespad=0,
+            labelspacing=0.5
+        )
+        ax.add_artist(legend2)
 
-    @staticmethod
-    def _reset_stats():
-        return {"total_targets_reached": 0,
-                "total_failed_move": 0,
-                "fps": "0.0",
-                "total_steps": 0,
-                "cumulative_reward": 0}
-
-    def _initial_render(self):
-        """Initial render of the environment. Also shows loading text."""
-        background = pygame.Surface(self.window.get_size())
-        background = background.convert()
-        background.fill((250, 250, 250))
-
-        # Display the loading text
-        font = pygame.font.Font(None, 36)
-        text = font.render("Loading environment...", True, (10, 10, 10))
-        textpos = text.get_rect()
-        textpos.centerx = background.get_rect().centerx
-        textpos.centery = background.get_rect().centery
-
-        # Blit the text onto the background surface
-        background.blit(text, textpos)
-        # Blit the background onto the window
-        update_rect = self.window.blit(background, background.get_rect())
-        # Tell pygame to update the display where the window was blit-ed
-        pygame.display.update(update_rect)
-
-    @staticmethod
-    def _downsample_rect(rect: pygame.Rect, scalar: float) -> pygame.Rect:
-        """Downsamples the given rectangle by a scalar."""
-        x = rect.x * scalar
-        y = rect.y * scalar
-        width = rect.width * scalar
-        height = rect.height * scalar
-        return pygame.Rect(x, y, width, height)
-
-    def _draw_grid(self, surface: pygame.Surface, grid: np.ndarray,
-                   x_offset: int, y_offset: int):
-        """Draws the grid world on the given surface."""
-        for row in range(grid.shape[1]):
-            y = (row * self.scalar) + y_offset
-            for col in range(grid.shape[0]):
-                x = (col * self.scalar) + x_offset
-                val = grid[col, row]
-
-                rect = pygame.Rect(x, y, self.scalar, self.scalar)
-                pygame.draw.rect(surface, self.CELL_COLORS[val], rect)
-                pygame.draw.rect(surface, (255, 255, 255), rect, width=1)
-
-    def _draw_button(self, surface: pygame.Surface, text: str,
-                     rect: pygame.Rect, color: tuple[int, int, int],
-                     text_color: tuple[int, int, int] = (0, 0, 0)):
-        """Draws a button on the given surface."""
-        pygame.draw.rect(surface, color, rect)
-        pygame.draw.rect(surface, (255, 255, 255), rect, width=1)
-
-        font = pygame.font.Font(None, int(self.scalar / 2))
-        text = font.render(text, True, text_color)
-        textpos = text.get_rect()
-        textpos.centerx = rect.centerx
-        textpos.centery = rect.centery
-        surface.blit(text, textpos)
-
-    def _draw_agent(self,
-                    surface: pygame.Surface,
-                    agent_pos: tuple[int, int],
-                    agent_orientation: float,  # now in degrees
-                    x_offset: int,
-                    y_offset: int):
-        """Draws the agent on the grid world, with a yellow 'nose' dot."""
-        # compute center of the agent’s circle
-        x = agent_pos[0] * self.scalar + x_offset
-        y = agent_pos[1] * self.scalar + y_offset
-        outer_r = int(self.scalar / 2) - 8
-        rect = pygame.Rect(x + 4, y + 4,
-                           self.scalar - 8, self.scalar - 8)
-        cx, cy = rect.centerx, rect.centery
-
-        # draw the main circle (agent body)
-        gfxdraw.aacircle(surface, cx, cy, outer_r, (0, 0, 102))
-        gfxdraw.filled_circle(surface, cx, cy, outer_r, (0, 0, 102))
-
-        # convert orientation degrees to radians
-        angle_rad = math.radians(agent_orientation)
-
-        eye_r = int(outer_r * 0.25)   # radius of the eye
-        # place it on the circle edge
-        eye_dist = outer_r - eye_r - 2
-
-        # compute the eye position:
-        dot_x = cx + math.sin(angle_rad) * eye_dist
-        dot_y = cy - math.cos(angle_rad) * eye_dist
-
-        # draw the yellow eye
-        gfxdraw.aacircle(surface, int(dot_x), int(dot_y), eye_r, (255, 255, 0))
-        gfxdraw.filled_circle(surface, int(dot_x), int(dot_y), eye_r, (255, 255, 0))
-
-    def _draw_info(self, surface) -> tuple[pygame.Rect, pygame.Rect]:
-        """Draws the info panel on the surface.
-
-        Returns:
-            The rect of the pause button and the step button.
-        """
-        x_offset = self.grid_panel_size[0] + 20
-        y_offset = 50
-
-        col_width = 200
-        row_height = 30
-
-        font = pygame.font.Font(None, 24)
-        for row, (key, name) in enumerate(self.INFO_NAME_MAP):
-            y_pos = y_offset + (row * row_height)
-            text = font.render(name, True, (0, 0, 0))
-            textpos = text.get_rect()
-            textpos.x = x_offset
-            textpos.y = y_pos
-            surface.blit(text, textpos)
-
-            text = font.render(f"{self.stats[key]}", True, (0, 0, 0))
-            textpos = text.get_rect()
-            textpos.x = x_offset + col_width
-            textpos.y = y_pos
-            surface.blit(text, textpos)
-
-        button_row = len(self.INFO_NAME_MAP) + 1
-        # Draw a button to pause the simulation
-        pause_rect = pygame.Rect(x_offset,
-                                 y_offset + (button_row * row_height) + 50,
-                                 200,
-                                 50)
-
-        clicked_color = (155, 155, 155)
-        color = (255, 255, 255)
-
-        self._draw_button(surface, "Resume" if self.paused else "Pause",
-                          pause_rect,
-                          clicked_color if self.paused_clicked else color,
-                          (0, 0, 0))
-
-        # Draw a button to step through the simulation
-        step_rect = pygame.Rect(x_offset,
-                                y_offset + (button_row * row_height) + 110,
-                                200,
-                                50)
-        self._draw_button(surface, "Step", step_rect,
-                          clicked_color if self.step_clicked else color,
-                          (0, 0, 0))
-
-        return pause_rect, step_rect
-
-
-    def render(self, grid_cells: np.ndarray, agent_pos: tuple[int, int], agent_orientation: int,
-               info: dict[str, any], reward: int, is_single_step: bool = False):
-        """Render the environment.
-
-        Args:
-            grid_cells: The grid cells contained in the Grid class.
-            agent_pos: List of current agent positions
-            info: `info` dict held by the Environment class.
-            is_single_step: Whether this render is caused by a click of the
-                `step` button.
-        """
-        self.frame_count += 1
-        self.frame_count %= 10
-
-        curr_time = perf_counter()
-        fps = 1 / (curr_time - self.last_render_time)
-        self.last_render_time = curr_time
-
-        self.last_10_fps[self.frame_count] = fps
-        self.stats["fps"] = f"{sum(self.last_10_fps) / 10:.1f}"
-        self.stats["total_targets_reached"] += int(info["target_reached"])
-
-        if (not self.paused and not self.step) or is_single_step:
-            self.stats["total_steps"] += 1
-
-        failed_move = 1 - int(info["agent_moved"])
-        self.stats["total_failed_move"] += failed_move
-
-        self.stats["cumulative_reward"] += reward
-
-        # Create a surface to actually draw on
-        background = pygame.Surface(self.window.get_size()).convert()
-        background.fill((250, 250, 250))
-
-        # Calculate grid offset
-        grid_width = self.scalar * grid_cells.shape[0]
-        grid_height = self.scalar * grid_cells.shape[1]
-        x_offset = (self.grid_panel_size[0] / 2) - (grid_width / 2)
-        y_offset = (self.grid_panel_size[1] / 2) - (grid_height / 2)
-
-        # Draw the background for the info panel
-        background.fill((238, 241, 240), self.info_panel_rect)
-        # Draw each layer on the surface
-        self._draw_grid(background, grid_cells, x_offset, y_offset)
-        self._draw_agent(background, agent_pos, agent_orientation, x_offset, y_offset)
-        pause_rect, step_rect = self._draw_info(background)
-
-        # Blit the surface onto the window
-        update_rect = self.window.blit(background, background.get_rect())
-        pygame.display.update(update_rect)
-
-        # Parse events that happened since the last render step
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                sys.exit()
-            elif event.type == pygame.MOUSEBUTTONDOWN:
-                # Detect click events
-                if pause_rect.collidepoint(event.pos):
-                    self.paused_clicked = True
-                elif step_rect.collidepoint(event.pos):
-                    self.step_clicked = True
-            elif event.type == pygame.MOUSEBUTTONUP:
-                # Only do the action on mouse button up, as is expected.
-                if self.paused_clicked:
-                    self.paused_clicked = False
-                    self.paused = not self.paused
-                elif self.step_clicked:
-                    self.step_clicked = False
-                    self.paused = True
-                    self.step = True
-        pygame.event.pump()
-
-    @staticmethod
-    def close():
-        """Closes the UI."""
-        pygame.quit()
+    plt.title("Warehouse Simulation")
+    plt.pause(1 / self.metadata["render_fps"])
+    if mode == "rgb_array":
+        return np.frombuffer(plt.gcf().canvas.tostring_rgb(), dtype=np.uint8).reshape(
+            plt.gcf().canvas.get_width_height()[::-1] + (3,)
+        )

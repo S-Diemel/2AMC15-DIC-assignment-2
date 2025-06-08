@@ -47,7 +47,7 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int, e
          epsilon_min: float, epsilon_decay_proportion: float):  
     """Main loop of the program."""
     env = Environment()
-    agent = DQNAgent(state_size=17, action_size=6, seed=random_seed)
+    agent = DQNAgent(state_size=16, action_size=6, seed=random_seed)
 
     # Number of episodes to decay the epsilon linearly
     decay_episodes = int(epsilon_decay_proportion * episodes)
@@ -72,7 +72,7 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int, e
         if no_gui:
             env_gui = False
         else:
-            env_gui = episode % 1 == 0 and episode != 0
+            env_gui = episode % 10 == 0 and episode != 0
 
         state = env.reset(no_gui=not env_gui, difficulty=difficulty)
 
@@ -97,12 +97,12 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int, e
             epsilon = epsilon_min
         agent.epsilon = epsilon
 
-    model_path = f"models/dqn_{name}_final.pth"
-    agent.save(model_path)
-    print(f"Saved trained model to -> {model_path}")
+    # model_path = f"models/dqn_{name}_final.pth"
+    # agent.save(model_path)
+    # print(f"Saved trained model to -> {model_path}")
 
-    agent.epsilon = 0  # Set epsilon to 0 for evaluation
-    Environment.evaluate_agent(agent, iters)
+    # agent.epsilon = 0  # Set epsilon to 0 for evaluation
+    # Environment.evaluate_agent(agent, iters)
 
 
 if __name__ == '__main__':
