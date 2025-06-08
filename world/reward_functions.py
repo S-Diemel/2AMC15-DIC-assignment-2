@@ -15,7 +15,6 @@ def default_reward_function(pickup, delivered, collided, charged, old_pos, agent
     """
     reward = -0.5
     if np.array_equal(old_pos, agent_pos):  # Punish agent for staying in the same position
-        # old_pos[0]==self.agent_pos[0] and old_pos[1]==self.agent_pos[1] 
         reward -= 0.5
     if charged:  # charging when below certain battery value
         reward += 5

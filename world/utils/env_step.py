@@ -4,7 +4,7 @@ from .action_mapping import action_to_values, orientation_to_directions
 
 def calc_new_position(action, speed, orientation, agent_angle, agent_pos, step_size):
     """Calculate the new position and orientation of the agent within the environment."""
-    # TODO: figure out what this new_speed is used for, it is not used in the rest of the code.
+    # TODO: remove speed, no longer used
     new_speed, sign_orientation = action_to_values(action)
 
     if speed == 0 and action==0:

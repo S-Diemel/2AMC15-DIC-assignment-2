@@ -44,7 +44,7 @@ class Environment(gym.Env):
         self.height = 10.0
         self.agent_radius = agent_radius
         self.step_size = step_size
-        self.speed = 0
+        self.speed = 0 # TODO: remove speed, no longer used
         self.orientation = 0
         self.agent_angle = 45
         self.max_range = 5 # Maximum range for sensors
@@ -114,7 +114,7 @@ class Environment(gym.Env):
             0.0,   # item_fw / max_range
             0.0,   # item_fw_right / max_range
             0.0,   # item_right / max_range
-            0.0    # battery / 100
+            # 0.0    # battery / 100
         ], dtype=np.float32)
 
         high = np.array([
@@ -134,7 +134,7 @@ class Environment(gym.Env):
             1.0,  # item_fw / max_range
             1.0,  # item_fw_right / max_range
             1.0,  # item_right / max_range
-            1.0   # battery / 100
+            # 1.0   # battery / 100
         ], dtype=np.float32)
         # Give possible values of observational space
         self.observation_space = spaces.Box(low, high, dtype=np.float32)
@@ -147,13 +147,15 @@ class Environment(gym.Env):
         # Call reset to finish initializing the environment
         self.reset()
     
-    def reset(self, no_gui=True, seed=None, agent_start_pos=False, difficulty=None, extra_obstacles=None):
+    def reset(self, no_gui=True, seed=None, agent_start_pos=False, difficulty=None, extra_obstacles=None, options=None):
         """
         Resetting the environment for a new task for the agent. This involves spawning packages/items, delivery points, the agent itself. 
         It also involves initializing some attributes to the environment and the agent, such as: that it is not carrying any items/packages, 
         it has not delivered any packages yet, it is at full battery, etc. Finally it computes the initial agent state observation vector.
         """
         super().reset(seed=seed)
+        info = {} # required for Gymnasium (parallel environments), but unused
+
         if extra_obstacles is not None:
             self.extra_obstacles = extra_obstacles
             # Implicit else: we keep the self.extra_obstacles from the initialization above, which is an empty list for None
@@ -177,7 +179,7 @@ class Environment(gym.Env):
         self.carrying = -1  # -1 = not carrying any items; otherwise this is the index of the item that is at that moment carried by the agent.
         self.battery = 100  # initializes battery
         self.no_gui = no_gui
-        return self._compute_features()
+        return self._compute_features(), info
     
     
     def step(self, action):
@@ -192,6 +194,8 @@ class Environment(gym.Env):
         - Computing new state (observational feature vector)
         """
         assert self.action_space.contains(action)
+        info = {} # required for Gymnasium (parallel environments), but unused
+
         old_pos = self.agent_pos.copy()
         old_target = compute_target(self.battery, self.battery_value_reward_charging, self.charger_center,
                                     self.carrying, self.delivery_points, self.item_spawn_center)
@@ -209,13 +213,14 @@ class Environment(gym.Env):
         reward = default_reward_function(pickup, delivered, collided, charged, old_pos, 
                                          self.agent_pos, self.agent_radius, self.forbidden_zones)
         reward += shaping_reward(old_pos, old_target, self.agent_pos)
-        done = self.battery <= 0 or all(self.delivered)
+        terminated = all(self.delivered) # terminated: relates to success/failure
+        truncated = self.battery <= 0 # Truncated: relates to early stopping
         # Update some statistics
         self.cumulative_reward += reward
         self.total_nr_steps += 1
         if collided:
             self.total_nr_collisions += 1
-        return self._compute_features(), reward, done
+        return self._compute_features(), reward, terminated, truncated, info
     
 
     def _compute_features(self):
@@ -276,7 +281,8 @@ class Environment(gym.Env):
             item_fw_left/self.max_range, 
             item_fw/self.max_range, 
             item_fw_right/self.max_range, 
-            item_right/self.max_range
+            item_right/self.max_range,
+            # self.battery/100.0
         ]
         return feature_vector
 

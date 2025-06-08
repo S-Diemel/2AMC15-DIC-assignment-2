@@ -4,20 +4,9 @@ Train your RL Agent in this file.
 
 from argparse import ArgumentParser
 from tqdm import trange
-
-try:
-    from world.environment import Environment
-    from agents.dqn import DQNAgent
-except ModuleNotFoundError:
-    from os import path
-    from os import pardir
-    import sys
-    root_path = path.abspath(path.join(
-        path.join(path.abspath(__file__), pardir), pardir)
-    )
-    if root_path not in sys.path:
-        sys.path.extend(root_path)
-    from deprecated import Environment
+from gymnasium.vector import AsyncVectorEnv
+from world.environment import Environment
+from agents.dqn import DQNAgent
 
 
 def parse_args():
@@ -43,59 +32,66 @@ def parse_args():
     return p.parse_args()
 
 
+def make_env():
+    def _thunk():
+        return Environment()
+    return _thunk
+
+
 def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int, epsilon: float,
          epsilon_min: float, epsilon_decay_proportion: float):  
     """Main loop of the program."""
-    env = Environment()
+    num_envs = 5  # Set this to the number of parallel environments you want
+    envs = AsyncVectorEnv([make_env() for _ in range(num_envs)])
     agent = DQNAgent(state_size=16, action_size=6, seed=random_seed)
 
     # Number of episodes to decay the epsilon linearly
-    decay_episodes = int(epsilon_decay_proportion * episodes)
+    decay_steps = int(epsilon_decay_proportion * episodes * iters)
     initial_epsilon = epsilon  # Store initial epsilon for decay calculation
 
-    # Curriculum schedule: split episodes into 4 equal parts
-    phase_len = episodes // 4
+    # # Curriculum schedule: split episodes into 4 equal parts
+    # phase_len = episodes // 4
 
-    for episode in range(episodes):
-        # Set difficulty based on curriculum phase
-        if episode < phase_len:
-            difficulty = 0  # easy
-        elif episode < 2 * phase_len:
-            difficulty = 1  # medium
-        elif episode < 3 * phase_len:
-            difficulty = 2  # hard
-        else:
-            difficulty = None  # no difficulty, just train on any problem
+    states, _ = envs.reset()
+    total_steps = 0
 
-        print(f"Episode {episode + 1}/{episodes} - Epsilon: {epsilon:.4f}")
+    for episode in range(episodes // num_envs):
+        # # Set difficulty based on curriculum phase (applies to all envs in batch)
+        # if episode < phase_len:
+        #     difficulty = 0  # easy
+        # elif episode < 2 * phase_len:
+        #     difficulty = 1  # medium
+        # elif episode < 3 * phase_len:
+        #     difficulty = 2  # hard
+        # else:
+        #     difficulty = None  # no difficulty, just train on any problem
 
-        if no_gui:
-            env_gui = False
-        else:
-            env_gui = episode % 10 == 0 and episode != 0
+        print(f"Episode batch {episode + 1}/{episodes // num_envs} - Epsilon: {epsilon:.4f}")
 
-        state, _ = env.reset(no_gui=not env_gui, difficulty=difficulty)
+        # if no_gui:
+        #     env_gui = False
+        # else:
+        #     env_gui = episode % 10 == 0 and episode != 0
 
-        for i in trange(iters):
-            if env_gui:
-                env.render()
+        for _ in trange(iters):
+            # take action + step in `num_envs` parallel environments
+            actions = [agent.take_action(state) for state in states]
+            next_states, rewards, terminateds, truncateds, _ = envs.step(actions)
+            for j in range(num_envs):
+                done = terminateds[j] or truncateds[j]
+                agent.update(states[j], actions[j], rewards[j], next_states[j], done)
+            states = next_states
 
-            action = agent.take_action(state)
-            next_state, reward, terminated, _, _ = env.step(action)
-            termination_flag = terminated or i == iters-1
-            agent.update(state, action, reward, next_state, termination_flag)
-            state = next_state
-
-            if terminated:
+            # Update the agent's epsilon value by `num_envs` steps
+            total_steps += num_envs
+            if total_steps < decay_steps:
+                frac = total_steps / decay_steps
+                epsilon = initial_epsilon - frac * (initial_epsilon - epsilon_min)
+            else:
+                epsilon = epsilon_min
+            agent.epsilon = epsilon
+            if all(terminateds):
                 break
-
-        # Decay epsilon (exploration rate)
-        if episode < decay_episodes:
-            frac = episode / decay_episodes
-            epsilon = initial_epsilon - frac * (initial_epsilon - epsilon_min)
-        else:
-            epsilon = epsilon_min
-        agent.epsilon = epsilon
 
     # model_path = f"models/dqn_{name}_final.pth"
     # agent.save(model_path)
