@@ -136,7 +136,6 @@ class DQNAgent(BaseAgent):
             reward: float reward from the environment
             action: int action that was taken
         """        
-        # TODO: do we terminate only after reaching target or also after episode reaches limit?
         done = terminated
 
         # Add to replay buffer
