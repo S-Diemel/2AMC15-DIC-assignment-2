@@ -16,19 +16,19 @@ def set_all_seeds(seed: int):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
-def compute_gae(rewards, values, next_value, dones, gamma, lam):
+def compute_gae(rewards, values, next_value, terminated, gamma, lam):
     """Using Generalized Advantage Estimation to calculate advantage"""
     # Convert to np array to make it faster
     rewards = np.array(rewards)
     values = np.array(values + [float(next_value)])
-    dones = np.array(dones, dtype=np.float32)
+    terminated = np.array(terminated, dtype=np.float32)
 
     advantages = np.zeros_like(rewards)
     gae = 0.0
     # Calculation of GAE based on PPO paper 2017
     for step in reversed(range(len(rewards))):
-        delta = rewards[step] + gamma * values[step + 1] * (1 - dones[step]) - values[step] # If done, next_value is 0, since terminated
-        gae = delta + gamma * lam * (1 - dones[step]) * gae
+        delta = rewards[step] + gamma * values[step + 1] * (1 - terminated[step]) - values[step] # If done, next_value is 0, since terminated
+        gae = delta + gamma * lam * (1 - terminated[step]) * gae    # Keep bootstrapping if truncated
         advantages[step] = gae
 
     returns = advantages + values[:-1]
@@ -42,7 +42,9 @@ class ActorCritic(nn.Module):
     def __init__(self, state_size: int, action_size: int):
         super().__init__()
         self.shared = nn.Sequential(
-            nn.Linear(state_size, 64),
+            nn.Linear(state_size, 128),
+            nn.Tanh(),
+            nn.Linear(128, 64),
             nn.Tanh(),
         )
         self.actor = nn.Sequential(
@@ -61,8 +63,7 @@ class RolloutBuffer:
     def __init__(self):
         self.clear()
 
-    def add(self, state=None, action=None, reward=None, log_prob=None, value=None, done=None):
-        """Add elements if they are provided (not None)"""
+    def add(self, state=None, action=None, reward=None, log_prob=None, value=None, terminated=None):
         if state is not None:
             self.states.append(state)
         if action is not None:
@@ -73,8 +74,8 @@ class RolloutBuffer:
             self.log_probs.append(log_prob)
         if value is not None:
             self.values.append(value)
-        if done is not None:    # Terminated / truncated has to be implemented
-            self.dones.append(done)
+        if terminated is not None:
+            self.terminated.append(terminated)
 
     def clear(self):
         self.states = []
@@ -82,7 +83,7 @@ class RolloutBuffer:
         self.rewards = []
         self.log_probs = []
         self.values = []
-        self.dones = []
+        self.terminated = []
 
 
 class PPOAgent(BaseAgent):
@@ -98,7 +99,8 @@ class PPOAgent(BaseAgent):
         entropy_coef=0.01,
         ppo_epochs=4,
         batch_size=64,
-        rollout_steps=2048
+        rollout_steps=4096,
+        num_envs=4
     ):
         super().__init__()
         set_all_seeds(seed)
@@ -113,6 +115,7 @@ class PPOAgent(BaseAgent):
         self.ppo_epochs = ppo_epochs
         self.batch_size = batch_size
         self.rollout_steps = rollout_steps
+        self.num_envs = num_envs
 
         # Policy and value network based on actor-critic network
         self.policy = ActorCritic(state_size, action_size).to(self.device)
@@ -121,10 +124,10 @@ class PPOAgent(BaseAgent):
 
         self.optimizer = optim.Adam(self.policy.parameters(), lr=self.lr)
         self.mse_loss = nn.MSELoss()
-        self.buffer = RolloutBuffer()
+        self.buffer = [RolloutBuffer() for _ in range(num_envs)]
         self.step_counter = 0
 
-    def take_action_training(self, state: tuple[int, int] | np.ndarray) -> int:
+    def take_action_training(self, state: tuple[int, int] | np.ndarray, env_idx: int) -> int:
         """Returns actions for given state as per current policy."""
         state = np.array(state, dtype=np.float32)
         state_tensor = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
@@ -135,8 +138,7 @@ class PPOAgent(BaseAgent):
             log_prob = dist.log_prob(action)
 
         # Add action, log_pop, value to buffer
-        self.buffer.add(action=action.item(), log_prob=log_prob.item(), value=value.item())
-        return action.item()
+        return action.item(), log_prob.item(), value.item()
 
     def take_action(self, state: tuple[int, int] | np.ndarray) -> int:
         """Returns greedy action for eval"""
@@ -149,31 +151,56 @@ class PPOAgent(BaseAgent):
 
         return greedy_action
 
-    def learn(self, next_state=None):
-        """Learn from rollout buffer when step>=rollout_steps"""
+    def calc_advantages_for_trajectory(self, env_buffer: RolloutBuffer):
+        values = env_buffer.values
+        rewards = env_buffer.rewards
+        terminated = env_buffer.terminated
 
-        # Convert everything to ensor
-        states = torch.tensor(np.array(self.buffer.states), dtype=torch.float32).to(self.device)
-        actions = torch.tensor(self.buffer.actions, dtype=torch.long).to(self.device)
-        old_log_probs = torch.tensor(self.buffer.log_probs, dtype=torch.float32).to(self.device)
-        values = self.buffer.values
-        rewards = self.buffer.rewards
-        dones = self.buffer.dones
+        # If episode ended before iters
+        if terminated[-1]:  # Episode ended
+            next_value = 0.0
 
         # Find next values for advantage calculation
         with torch.no_grad():
-            next_state = torch.tensor(self.buffer.states[-1], dtype=torch.float32).unsqueeze(0).to(self.device)
+            next_state = torch.tensor(env_buffer.states[-1], dtype=torch.float32).unsqueeze(0).to(self.device)
             next_value = self.policy_old(next_state)[1].squeeze()
 
         # Advantage calculation, using gae
-        advantages, returns = compute_gae(rewards, values, next_value, dones, self.gamma, self.gae_lambda)
-        advantages = torch.tensor(advantages, dtype=torch.float32).to(self.device)
-        returns = torch.tensor(returns, dtype=torch.float32).to(self.device)
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)   # Normalize to control variance and stability for PPO update
+        advantages, returns = compute_gae(rewards, values, next_value, terminated, self.gamma, self.gae_lambda)
+
+        return advantages, returns
+
+    def create_DL(self, states, actions, old_log_probs, returns, advantages):
+        states = torch.tensor(np.concatenate(states), dtype=torch.float32).to(self.device)
+        actions = torch.tensor(np.concatenate(actions), dtype=torch.long).to(self.device)
+        old_log_probs = torch.tensor(np.concatenate(old_log_probs), dtype=torch.float32).to(self.device)
+        advantages = torch.tensor(np.concatenate(advantages), dtype=torch.float32).to(self.device)
+        returns = torch.tensor(np.concatenate(returns), dtype=torch.float32).to(self.device)
+
+        # Normalize advantages to control variance and stability for PPO update
+        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
 
         # Create DataLoader for mini-batch updates
         dataset = TensorDataset(states, actions, old_log_probs, returns, advantages)
         dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
+
+        return dataloader
+
+    def learn(self):
+        """Learn from rollout buffer when step>=rollout_steps"""
+
+        advantages, returns = [], []
+        states, actions, old_log_probs = [], [], []
+
+        for env_idx in range(self.num_envs):
+            env_advantages, env_returns = self.calc_advantages_for_trajectory(self.buffer[env_idx])
+            advantages.append(env_advantages)
+            returns.append(env_returns)
+            states.append(self.buffer[env_idx].states)
+            actions.append(self.buffer[env_idx].actions)
+            old_log_probs.append(self.buffer[env_idx].log_probs)
+
+        dataloader = self.create_DL(states, actions, old_log_probs, returns, advantages)
 
         # PPO update for ppo_epochs, mini batch updates using DL
         for epoch in range(self.ppo_epochs):
@@ -216,12 +243,15 @@ class PPOAgent(BaseAgent):
 
         # Copy new policy to old policy
         self.policy_old.load_state_dict(self.policy.state_dict())
-        self.buffer.clear()
 
-    def update(self, state, reward, done):
+        # Clear buffers for all envs
+        for env_idx in range(self.num_envs):
+            self.buffer[env_idx].clear()
+
+    def update(self, state, action, reward, log_prob, value, terminated, env_idx):
         """Add experience to buffer"""
 
-        self.buffer.add(state=state, reward=reward, done=done)
+        self.buffer[env_idx].add(state=state, action=action, reward=reward, log_prob=log_prob, value=value, terminated=terminated)
         self.step_counter += 1
 
         if self.step_counter >= self.rollout_steps:
