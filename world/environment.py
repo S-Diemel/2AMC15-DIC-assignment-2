@@ -44,7 +44,7 @@ class Environment(gym.Env):
         self.width = 20.0
         self.height = 10.0
         self.sigma = sigma 
-        # Environment stochasticity interpreted as slippery-ness. The agent current move is duplicated. 
+        # Environment stochasticity interpreted as slippery-ness. The agent's current move is duplicated. 
         # Unless it has a collision with a wall or obstacle, in this case the action is not repeated.
         self.agent_radius = agent_radius
         self.step_size = step_size
