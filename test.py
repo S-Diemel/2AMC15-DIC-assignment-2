@@ -14,16 +14,18 @@ for i in range(100):
     if i == 3:
         difficulty = 2
 
-    env = Environment()
+    env = Environment(sigma=0.5, step_size=0.5)
     obs = env.reset(no_gui=False, seed=0, difficulty=difficulty) # , extra_obstacles=[(1,1,2,2)])
     done = False
 
-    for _ in range(5):  # Note very little steps for illustration purposes, because random agent
+    for _ in range(100):  # Note very little steps for illustration purposes, because random agent
         
         env.render()
         action = env.action_space.sample()
-        obs, reward, done = env.step(action)
-        print(obs, reward, done)
-        #time.sleep(3)
+        print(action)
+        obs, reward, terminated, truncated, info = env.step(action)
+        print(info["env_stochasticity"])
+        print(reward, done)
+        time.sleep(2)
         if done:
             break
