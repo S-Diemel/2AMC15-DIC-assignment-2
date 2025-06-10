@@ -37,6 +37,7 @@ class Environment(gym.Env):
         number_of_items=3,
         agent_radius=0.4,
         step_size=0.2,
+        sigma=0,
         difficulty=None,  # Difficulty level represented by None (random no particular difficulty level), 0 (easy), 1 (medium), 2 (hard)  
         extra_obstacles=None,  # List of additional obstacles, if any --> useful for experimenting with humans or boxes in random places
     ):
@@ -44,11 +45,14 @@ class Environment(gym.Env):
 
         self.width = 20.0
         self.height = 10.0
+        self.sigma = sigma 
+        # Environment stochasticity interpreted as slippery-ness. The agent's current move is duplicated. 
+        # Unless it has a collision with a wall or obstacle, in this case the action is not repeated.
         self.agent_radius = agent_radius
         self.step_size = step_size
         self.speed = 0 # TODO: remove speed, no longer used
         self.orientation = 0
-        self.agent_angle = 45
+        self.agent_angle = 45  # the agents angle step-size
         self.max_range = 5 # Maximum range for sensors
         self.battery_drain_per_step = 0.0  # In reset, the battery is always reset to 100%
         self.battery_value_reward_charging = 20  # From which battery level to reward the agent for going to the charging station. 
@@ -207,15 +211,30 @@ class Environment(gym.Env):
         - Computing when an episode is finished --> if all items are delivered or the battery died
         - Computing new state (observational feature vector)
         """
-        assert self.action_space.contains(action)
-        info = {} # required for Gymnasium (parallel environments), but unused
+        env_stochasticity = np.random.choice([True, False], p=[self.sigma, 1-self.sigma])  # determine whether to do apply environment stochasticity (slippery)
+        # This means duplication the effect of the current action. Therefore the outcome is a more exeggarated situation of the inteded move. 
+        info = {"env_stochasticity": env_stochasticity}  # we need to supply as step "info" parameter, we add information regarding stochasticity of the step
 
+        # Check move for certainty
+        assert self.action_space.contains(action)
+
+        # Save old values
         old_pos = self.agent_pos.copy()
         old_target = compute_target(self.battery, self.battery_value_reward_charging, self.charger_center,
                                     self.carrying, self.delivery_points, self.item_spawn_center)
+        
+        # Compute new position after action
         self.orientation, new_pos = calc_new_position(action, self.speed, self.orientation, self.agent_angle, self.agent_pos, self.step_size)
-        correct_new_pos, collided = calc_collision(old_pos, new_pos, self.agent_radius, self.width, self.height, self.all_obstacles)
-        self.agent_pos = correct_new_pos
+        self.agent_pos, collided = calc_collision(old_pos, new_pos, self.agent_radius, self.width, self.height, self.all_obstacles)
+        
+        # Apply environment stochasticity -> new position due to slippery-ness
+        if env_stochasticity and not collided:  # if not collided, new_pos and correct_new_pos are the same --> intuition slippery-ness only has effect when no collisions happen
+            old_pos_extra = self.agent_pos.copy()
+            # Repeat same code as above
+            self.orientation, new_pos = calc_new_position(action, self.speed, self.orientation, self.agent_angle, self.agent_pos, self.step_size)
+            self.agent_pos, collided = calc_collision(old_pos_extra, new_pos, self.agent_radius, self.width, self.height, self.all_obstacles)      
+
+        # Update delivery and battery information
         self.vision_triangle = calc_vision_triangle(self.agent_pos, self.orientation, self.max_range, self.agent_radius)
         self.carrying, self.item, self.delivered, pickup, delivered = update_delivery(
             action, self.carrying, self.speed, self.items, self.delivered, self.agent_pos, 
@@ -228,13 +247,17 @@ class Environment(gym.Env):
         reward = default_reward_function(pickup, delivered, collided, charged, old_pos, 
                                          self.agent_pos, self.agent_radius, self.forbidden_zones)
         reward += shaping_reward(old_pos, old_target, self.agent_pos)
+
+        # Bookkeeping for ending an episode
         terminated = all(self.delivered) # terminated: relates to success/failure
         truncated = self.battery <= 0 # Truncated: relates to early stopping
+
         # Update some statistics
         self.cumulative_reward += reward
         self.total_nr_steps += 1
         if collided:
             self.total_nr_collisions += 1
+
         return self._compute_features(), reward, terminated, truncated, info
     
 
