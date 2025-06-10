@@ -1,8 +1,9 @@
 import torch
 from pathlib import Path
-from world.environment_dqn import Environment
+from world.environment import Environment
 from agents.dqn import DQNAgent
-
+from tqdm import trange
+import time
 
 def full_evaluation(env, agent, n_episodes=10, max_steps=1000):
     """More extensive evaluation of the agent's performance."""
@@ -47,6 +48,23 @@ def evaluate(model_path: Path, grid_path: Path,
     # Own evaluation function
     returns, success_rate = full_evaluation(env, agent, n_episodes=10, max_steps=iters)
     return returns, success_rate
+
+def evaluate_agent_training(agent, iters, no_gui, difficulty, number_of_items):
+    next_state = 0
+    env = Environment()
+    state, _ = env.reset(no_gui=no_gui, difficulty=difficulty, number_of_items=number_of_items, agent_start_pos=(1,1))
+    agent.epsilon=0.1
+    for i in trange(iters):
+        env.render()
+        # time.sleep(3)
+        # print(state)
+
+        action = agent.take_action(state)
+        next_state, reward, terminated, truncated, _ = env.step(action)
+        termination_flag = terminated or i == iters-1
+        state = next_state
+        if terminated or truncated:
+            break
 
 
 if __name__ == "__main__":

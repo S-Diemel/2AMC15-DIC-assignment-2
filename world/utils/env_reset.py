@@ -1,5 +1,5 @@
 import numpy as np
-
+from .action_mapping import orientation_to_directions
 
 def _point_in_rectangle(x, y, rect):
     """Checks if a point occurs in a single rectangle or not."""
@@ -98,7 +98,7 @@ def set_difficulty_of_env(item_spawn, width, height, difficulty=None):
         The agent and the delivery points will exclusively be sampled according to the selected difficulty level. 
         """
         # Only values None, 0, 1, 2 are accepted the rest is not accepted
-        assert difficulty in [None, 0, 1, 2], "Only values None (no level), 0 (easy), 1 (medium), 2 (hard) are accepted the rest is not accepted"
+        assert difficulty in [None, 0, 1, 2], f"Only values None (no level), 0 (easy), 1 (medium), 2 (hard) are accepted the rest is not accepted. not: {difficulty}"
         item_spawn_width = item_spawn[0][2]
         width_difficulty_region = (width - item_spawn_width) / 3
         # Create difficulty region
@@ -107,3 +107,15 @@ def set_difficulty_of_env(item_spawn, width, height, difficulty=None):
                              item_spawn_width + (difficulty + 1) * width_difficulty_region, 
                              height) if difficulty is not None else None
         return difficulty_region
+
+def calc_vision_triangle(agent_pos, orientation, max_range, agent_radius):
+    """Calc the corners of the vision triangle"""
+    left_side_triangle = (orientation-45)%360
+    right_side_triangle = (orientation+45)%360
+    left_direction = np.array(orientation_to_directions(left_side_triangle))
+    right_direction = np.array(orientation_to_directions(right_side_triangle))
+    left_direction  = left_direction / np.linalg.norm(left_direction)
+    right_direction = right_direction / np.linalg.norm(right_direction)
+    left_point = agent_pos + left_direction*(max_range + agent_radius)
+    right_point = agent_pos + right_direction*(max_range + agent_radius)
+    return agent_pos, left_point, right_point

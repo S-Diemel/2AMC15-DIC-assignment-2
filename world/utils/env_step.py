@@ -4,12 +4,12 @@ from .action_mapping import action_to_values, orientation_to_directions
 
 def calc_new_position(action, speed, orientation, agent_angle, agent_pos, step_size):
     """Calculate the new position and orientation of the agent within the environment."""
-    # TODO: remove speed, no longer used
     new_speed, sign_orientation = action_to_values(action)
 
-    if speed == 0 and action==0:
+    if new_speed == 1:
         new_orientation = (orientation + sign_orientation*agent_angle) % 360
-        direction = orientation_to_directions(orientation)
+        direction = orientation_to_directions(new_orientation)
+        direction = direction / np.linalg.norm(direction)
         new_position = np.array([agent_pos[0] + step_size*direction[0], agent_pos[1] + step_size*direction[1]])
         return new_orientation, new_position
     else:
@@ -61,7 +61,7 @@ def update_delivery(action, carrying, speed, items, delivered, agent_pos, agent_
     """
     item_delivered = False
     item_picked_up=False
-    if action == 5 and carrying == -1 and speed == 0:  
+    if action == 5 and carrying == -1 and speed == 0:
         # If we are performing the pickup action, we are not yet carrying any item and we are standing still we can pick up an item.
         for i, (pos, delivered_status) in enumerate(zip(items, delivered)):  
             # Iterate over all items that can be picked up, and make sure we have info on whether these items have been delivered yet.
@@ -75,7 +75,7 @@ def update_delivery(action, carrying, speed, items, delivered, agent_pos, agent_
         items[carrying] = agent_pos.copy()
 
     # If we are carrying an item, we do pickup/dropoff action and we are standing still
-    if carrying != -1 and action == 4 and speed == 0:
+    if carrying != -1 and action == 5 and speed == 0:
         for i, point in enumerate(delivery_points):  
             if carrying == i and np.linalg.norm(agent_pos - point) < agent_radius + delivery_radius:
                 # Check if item that is being carried and its delivery point correspond
