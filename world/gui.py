@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle, Circle, Patch
+from matplotlib.patches import Rectangle, Circle, Patch, Polygon
 from matplotlib.lines import Line2D
 from world.utils.action_mapping import orientation_to_directions
 
@@ -96,6 +96,16 @@ def render_gui(self, mode="human", show_full_legend=True, show_difficulty_region
             xmin, ymin, xmax, ymax = self.difficulty_region
             ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="green", alpha=0.2))
 
+    # vision triangle
+    tri_coords = np.array(self.vision_triangle)   # shape (3, 2)
+    vision_tri = Polygon(
+        tri_coords,
+        closed=True,
+        facecolor="yellow",
+        edgecolor=None,
+        alpha=0.4,       # translucent
+    )
+    ax.add_patch(vision_tri)
     # Draw Agent
     if self.carrying > -1:  # Give orange edge to agent when carrying an item
         ax.add_patch(Circle(self.agent_pos, self.agent_radius, facecolor="#00A800", edgecolor="orange", linewidth=2))

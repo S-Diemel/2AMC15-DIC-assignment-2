@@ -5,10 +5,10 @@ def action_to_values(action):
     """
     values = {
         0: (1, 0),      # go
-        1: (0, -2),     # left 90 
-        2: (0, -1),     # left 45 
-        3: (0, 1),      # right 45
-        4: (0, 2),      # right 90
+        1: (0, -1),     # left 45 inplace
+        2: (0, 1),     # right 45 inplace
+        3: (1, -1),      # left 45 and forward
+        4: (1, 1),      # right 45 and forward
         5: (0, 0)       # pickup/drop
     }
     return values[action]
