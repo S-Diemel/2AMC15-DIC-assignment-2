@@ -52,15 +52,19 @@ def evaluate(model_path: Path, grid_path: Path,
 def evaluate_agent_training(agent, iters, no_gui, difficulty, number_of_items):
     next_state = 0
     env = Environment()
-    state, _ = env.reset(no_gui=no_gui, difficulty=difficulty, number_of_items=number_of_items, agent_start_pos=(1,1))
+    state, _ = env.reset(no_gui=no_gui, difficulty=difficulty, number_of_items=number_of_items)
     agent.epsilon=0.1
     for i in trange(iters):
-        env.render()
+        #env.render()
         # time.sleep(3)
         # print(state)
 
         action = agent.take_action(state)
+        # print(action)
         next_state, reward, terminated, truncated, _ = env.step(action)
+        env.render()
+        # print(reward)
+        # print('\n')
         termination_flag = terminated or i == iters-1
         state = next_state
         if terminated or truncated:

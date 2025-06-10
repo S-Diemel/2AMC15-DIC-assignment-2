@@ -20,7 +20,8 @@ from world.utils.compute_features import (
     compute_distance_to_wall,
     compute_dist_to_target,
     compute_target,
-    calc_dist_to_item_in_triangle
+    calc_dist_to_item_in_triangle,
+    calc_can_interact
 )
 from world.utils.env_init import (
     create_delivery_zones,
@@ -121,7 +122,8 @@ class Environment(gym.Env):
             # 0.0,   # item_fw_right / max_range
             # 0.0,   # item_right / max_range
             # 0.0    # battery / 100
-            0.0 #triangle_vision
+            0.0, #triangle_vision
+            0.0 # binary can interact with something
         ], dtype=np.float32)
 
         high = np.array([
@@ -142,7 +144,8 @@ class Environment(gym.Env):
             # 1.0,  # item_fw_right / max_range
             # 1.0,  # item_right / max_range
             # 1.0   # battery / 100
-            1.0 # triangle vision
+            1.0, # triangle vision
+            1.0 # binary can interact with something
         ], dtype=np.float32)
         # Give possible values of observational space
         self.observation_space = spaces.Box(low, high, dtype=np.float32)
@@ -155,7 +158,7 @@ class Environment(gym.Env):
         # Call reset to finish initializing the environment
         self.reset()
     
-    def reset(self, no_gui=True, seed=None, agent_start_pos=False, difficulty=None, extra_obstacles=None, number_of_items=None, options=None):
+    def reset(self, no_gui=True, seed=None, agent_start_pos=False, difficulty=None, extra_obstacles=None, number_of_items=None, battery_drain_per_step=None, options=None):
         """
         Resetting the environment for a new task for the agent. This involves spawning packages/items, delivery points, the agent itself. 
         It also involves initializing some attributes to the environment and the agent, such as: that it is not carrying any items/packages, 
@@ -166,6 +169,7 @@ class Environment(gym.Env):
         if options is not None:
             self.difficulty = options.get("difficulty", self.difficulty)
             self.number_of_items = options.get("number_of_items", self.number_of_items)
+            self.battery_drain_per_step = options.get("battery_drain_per_step", self.battery_drain_per_step)
         if difficulty==3:
             self.difficulty=None
         super().reset(seed=seed)
@@ -180,6 +184,8 @@ class Environment(gym.Env):
             self.difficulty = difficulty
         if number_of_items is not None:
             self.number_of_items = number_of_items
+        if battery_drain_per_step is not None:
+            self.battery_drain_per_step = battery_drain_per_step
         self.difficulty_region = set_difficulty_of_env(
             self.item_spawn, self.width, self.height, self.difficulty)  # For curriculum learning set the difficulty of the environment
         self.item_starts = sample_points_in_rectangles(
@@ -241,8 +247,8 @@ class Environment(gym.Env):
             self.agent_radius, self.item_radius, self.delivery_points, self.delivery_radius
         )
         self.battery, charged = update_battery(self.battery, self.battery_drain_per_step, self.agent_pos, self.charger, 
-                                 self.speed, self.battery_value_reward_charging)
-        
+                                 self.speed, self.battery_value_reward_charging, action)
+
         # Compute the reward for this step
         reward = default_reward_function(pickup, delivered, collided, charged, old_pos, 
                                          self.agent_pos, self.agent_radius, self.forbidden_zones)
@@ -295,6 +301,7 @@ class Environment(gym.Env):
         #     self.max_range, self.agent_radius, self.agent_pos, self.item_starts, self.item_radius, self.delivered, self.carrying)
         vision_triangle_sensor = calc_dist_to_item_in_triangle(self.agent_pos, self.max_range, self.agent_radius, self.item_starts, self.delivered, self.carrying, self.vision_triangle, self.all_obstacles)
         # Binary indicator whether agent is carrying an item
+        can_interact = calc_can_interact(self.agent_pos, self.agent_radius, self.items, self.item_radius, self.delivery_points, self.delivery_radius, self.delivered, self.carrying, self.charger)
         if self.carrying >= 0:
             carrying = 1
         else:
@@ -307,7 +314,7 @@ class Environment(gym.Env):
         feature_vector = [
             x/self.width, 
             y/self.height, 
-            self.orientation/360,
+            self.orientation/self.agent_angle,
             carrying, 
             dist_target_x/self.width, 
             dist_target_y/self.height,
@@ -323,6 +330,7 @@ class Environment(gym.Env):
             #item_right/self.max_range,
             # self.battery/100.0
             vision_triangle_sensor/self.max_range,
+            can_interact
         ]
         return feature_vector
 

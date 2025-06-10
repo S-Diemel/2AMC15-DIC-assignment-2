@@ -88,13 +88,13 @@ def update_delivery(action, carrying, speed, items, delivered, agent_pos, agent_
     return carrying, items, delivered, item_picked_up, item_delivered
 
 
-def update_battery(battery, battery_drain_per_step, agent_pos, charger, speed, battery_value_reward_charging):
+def update_battery(battery, battery_drain_per_step, agent_pos, charger, speed, battery_value_reward_charging, action):
     """All logic for reducing battery level during steps, recharging by standing still in the charging area, and rewarding charging at low battery level"""
     old_battery = battery
     battery -= battery_drain_per_step  # Decrease the battery of the agent at each timestep
     x, y = agent_pos
     xmin, ymin, xmax, ymax = charger
-    if xmin <= x <= xmax and ymin <= y <= ymax and speed == 0:  # if robot stands still in charging stop the battery is full again.
+    if xmin <= x <= xmax and ymin <= y <= ymax and action==5 and speed == 0:  # if robot stands still in charging stop the battery is full again.
         battery = 100
         if old_battery <= battery_value_reward_charging:  # only reward charging if battery was actually low
             return battery, True

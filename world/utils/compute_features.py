@@ -168,6 +168,22 @@ def calc_dist_to_item_in_triangle(agent_pos, max_range, agent_radius, item_start
                     min_distance = distance
     return max(0, min_distance)
 
+def calc_can_interact(agent_pos, agent_radius, items, item_radius, delivery_points, delivery_radius, delivered, carrying, charger):
+    for i, (pos, delivered_status) in enumerate(zip(items, delivered)):
+        # Iterate over all items that can be picked up, and make sure we have info on whether these items have been delivered yet.
+        if not delivered_status and carrying==-1 and np.linalg.norm(agent_pos - pos) < agent_radius + item_radius:
+            return 1
+
+    for i, point in enumerate(delivery_points):
+        if carrying == i and np.linalg.norm(agent_pos - point) < agent_radius + delivery_radius:
+            return 1
+
+    x, y = agent_pos
+    xmin, ymin, xmax, ymax = charger
+    if xmin <= x <= xmax and ymin <= y <= ymax:
+        return 1
+
+    return 0
 
 
 
