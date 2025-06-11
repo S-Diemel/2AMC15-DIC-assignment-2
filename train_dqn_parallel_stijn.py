@@ -100,7 +100,7 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int, e
         print(f"Episode batch {episode + 1}/{episodes // num_envs} - Epsilon: {epsilon:.4f}")
 
         if not no_gui and (episode+1) % 50 == 0 and episode != 0:
-            evaluate_agent_training(agent=agent, iters=500, no_gui=False, difficulty=difficulty, number_of_items= number_of_items)
+            evaluate_agent_training(agent=agent, iters=500, no_gui=False, difficulty=difficulty, number_of_items= number_of_items, battery_drain_per_step= battery_drain_per_step)
         agent.epsilon=epsilon
         opts = {"difficulty": difficulty, 'number_of_items': number_of_items, 'battery_drain_per_step': battery_drain_per_step}
         states, _ = envs.reset(options=opts)
@@ -124,8 +124,6 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int, e
     agent.save(model_path)
     print(f"Saved trained model to -> {model_path}")
 
-    agent.epsilon = 0  # Set epsilon to 0 for evaluation
-    Environment.evaluate_agent(agent, iters)
 
 
 if __name__ == '__main__':

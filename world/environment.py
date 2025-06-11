@@ -171,7 +171,8 @@ class Environment(gym.Env):
             self.number_of_items = options.get("number_of_items", self.number_of_items)
             self.battery_drain_per_step = options.get("battery_drain_per_step", self.battery_drain_per_step)
         if difficulty==3:
-            self.difficulty=None
+            difficulty=None
+            self.difficulty=difficulty
         super().reset(seed=seed)
         info = {} # required for Gymnasium (parallel environments), but unused
 
