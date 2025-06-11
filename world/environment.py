@@ -125,7 +125,8 @@ class Environment(gym.Env):
             # 0.0    # battery / 100
             0.0, #triangle_vision
             0.0, # binary can interact with something
-            0.0 # area code
+            0.0, # area code
+            0.0, # speed
         ], dtype=np.float32)
 
         high = np.array([
@@ -148,7 +149,8 @@ class Environment(gym.Env):
             # 1.0   # battery / 100
             1.0, # triangle vision
             1.0, # binary can interact with something
-            9.0 # area code
+            9.0, # area code
+            3.0, # speed
         ], dtype=np.float32)
         # Give possible values of observational space
         self.observation_space = spaces.Box(low, high, dtype=np.float32)
@@ -157,6 +159,13 @@ class Environment(gym.Env):
         self.cumulative_reward = 0
         self.total_nr_collisions = 0
         self.total_nr_steps = 0
+
+        # delivery_aisle:
+        self.delivery_aisles = [(5, 0, 19.5, 2.5),  # bottom
+                                (5, 2.5, 19.5, 5),  # first from bottom
+                                (5, 5, 19.5, 7.5),  # second from bottom
+                                (5, 7.5, 19.5, 10)]  # top aisle
+
 
         # Call reset to finish initializing the environment
         self.reset()
@@ -236,7 +245,7 @@ class Environment(gym.Env):
                                     self.carrying, self.delivery_points, self.item_spawn_center)
         
         # Compute new position after action
-        self.orientation, new_pos = calc_new_position(action, self.speed, self.orientation, self.agent_angle, self.agent_pos, self.step_size)
+        self.orientation, new_pos, self.speed = calc_new_position(action, self.speed, self.orientation, self.agent_angle, self.agent_pos, self.step_size)
         self.agent_pos, collided = calc_collision(old_pos, new_pos, self.agent_radius, self.width, self.height, self.all_obstacles)
         
         # Apply environment stochasticity -> new position due to slippery-ness
@@ -245,6 +254,10 @@ class Environment(gym.Env):
             # Repeat same code as above
             self.orientation, new_pos = calc_new_position(action, self.speed, self.orientation, self.agent_angle, self.agent_pos, self.step_size)
             self.agent_pos, collided = calc_collision(old_pos_extra, new_pos, self.agent_radius, self.width, self.height, self.all_obstacles)      
+
+        # if collided set speed to 0
+        if collided:
+            self.speed = 0
 
         # Update delivery and battery information
         self.vision_triangle = calc_vision_triangle(self.agent_pos, self.orientation, self.max_range, self.agent_radius)
@@ -314,7 +327,7 @@ class Environment(gym.Env):
             carrying = 0
         # Distance between agent and target on x and y axis.
         area_code =  compute_area_code(self.battery, self.battery_value_reward_charging,
-                                            self.charger_center, self.carrying, self.delivery_points, self.item_spawn_center, self.racks)
+                                            self.charger_center, self.carrying, self.delivery_points, self.item_spawn_center, self.delivery_aisles)
 
         # Combining everything into a single feature vector
         feature_vector = [
@@ -338,6 +351,7 @@ class Environment(gym.Env):
             vision_triangle_sensor/self.max_range,
             can_interact,
             area_code,
+            self.speed,
         ]
         return feature_vector
 

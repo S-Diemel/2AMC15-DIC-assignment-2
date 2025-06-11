@@ -114,22 +114,22 @@ def find_closest_rectangle_to_edge(rectangles, point):
 
     return closest_index
 
-def compute_area_code(battery, battery_value_reward_charging, charger_center, carrying, delivery_points, item_spawn_center, racks):
+def compute_area_code(battery, battery_value_reward_charging, charger_center, carrying, delivery_points, item_spawn_center, aisles):
 
     target_x, target_y = compute_target(battery, battery_value_reward_charging, charger_center,
                                         carrying, delivery_points, item_spawn_center)
 
     if carrying>=0:
-        area = find_closest_rectangle_to_edge(racks, (target_x, target_y))
+        area = find_closest_rectangle_to_edge(aisles, (target_x, target_y))
         return area
     elif target_x == charger_center[0] and target_y == charger_center[1]:
-        area = len(racks)
+        area = len(aisles)
         return area
     elif target_x == item_spawn_center[0] and target_y == item_spawn_center[1]:
-        area = len(racks)+1
+        area = len(aisles)+1
         return area
     else:
-        return len(racks)+1
+        return len(aisles)+1
 
 
 def _ray_march_collision(direction, origin, max_distance, step_size, is_collision_fn):
