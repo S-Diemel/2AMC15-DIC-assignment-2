@@ -57,7 +57,7 @@ class Environment(gym.Env):
         self.agent_angle = 45  # the agents angle step-size
         self.max_range = 5 # Maximum range for sensors
         self.battery_drain_per_step = 0.0  # In reset, the battery is always reset to 100%
-        self.battery_value_reward_charging = 20  # From which battery level to reward the agent for going to the charging station. 
+        self.battery_value_reward_charging = 50  # From which battery level to reward the agent for going to the charging station.
 
         # Define the layout based on the image
         width_spawn_area = 3
@@ -122,7 +122,7 @@ class Environment(gym.Env):
             # 0.0,   # item_fw / max_range
             # 0.0,   # item_fw_right / max_range
             # 0.0,   # item_right / max_range
-            # 0.0    # battery / 100
+            0.0,    # battery / 100
             0.0, #triangle_vision
             0.0, # binary can interact with something
             0.0, # area code
@@ -145,8 +145,8 @@ class Environment(gym.Env):
             # 1.0,  # item_fw_left / max_range
             # 1.0,  # item_fw / max_range
             # 1.0,  # item_fw_right / max_range
-            # 1.0,  # item_right / max_range
-            # 1.0   # battery / 100
+            #1.0,  # item_right / max_range
+            1.0,   # battery / 100
             1.0, # triangle vision
             1.0, # binary can interact with something
             9.0, # area code
@@ -241,8 +241,7 @@ class Environment(gym.Env):
 
         # Save old values
         old_pos = self.agent_pos.copy()
-        old_target = compute_target(self.battery, self.battery_value_reward_charging, self.charger_center,
-                                    self.carrying, self.delivery_points, self.item_spawn_center)
+        old_target = compute_target(self.carrying, self.delivery_points, self.item_spawn_center)
         
         # Compute new position after action
         self.orientation, new_pos, self.speed = calc_new_position(action, self.speed, self.orientation, self.agent_angle, self.agent_pos, self.step_size)
@@ -268,14 +267,19 @@ class Environment(gym.Env):
         self.battery, charged = update_battery(self.battery, self.battery_drain_per_step, self.agent_pos, self.charger, 
                                  self.speed, self.battery_value_reward_charging, action)
 
+        if self.battery <= 0:
+            battery_died = True
+        else:
+            battery_died=False
+
         # Compute the reward for this step
-        reward = default_reward_function(pickup, delivered, collided, charged, old_pos, 
+        reward = default_reward_function(pickup, delivered, collided, charged, battery_died, old_pos,
                                          self.agent_pos, self.agent_radius, self.forbidden_zones)
         reward += shaping_reward(old_pos, old_target, self.agent_pos)
 
         # Bookkeeping for ending an episode
         terminated = all(self.delivered) # terminated: relates to success/failure
-        truncated = self.battery <= 0 # Truncated: relates to early stopping
+        truncated = battery_died # Truncated: relates to early stopping
 
         # Update some statistics
         self.cumulative_reward += reward
@@ -326,8 +330,7 @@ class Environment(gym.Env):
         else:
             carrying = 0
         # Distance between agent and target on x and y axis.
-        area_code =  compute_area_code(self.battery, self.battery_value_reward_charging,
-                                            self.charger_center, self.carrying, self.delivery_points, self.item_spawn_center, self.delivery_aisles)
+        area_code =  compute_area_code(self.carrying, self.delivery_points, self.item_spawn_center, self.delivery_aisles)
 
         # Combining everything into a single feature vector
         feature_vector = [
@@ -347,7 +350,7 @@ class Environment(gym.Env):
             # item_fw/self.max_range,
             # item_fw_right/self.max_range,
             #item_right/self.max_range,
-            # self.battery/100.0
+            self.battery/100.0,
             vision_triangle_sensor/self.max_range,
             can_interact,
             area_code,

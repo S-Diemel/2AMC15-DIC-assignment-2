@@ -98,5 +98,5 @@ def update_battery(battery, battery_drain_per_step, agent_pos, charger, speed, b
     if xmin <= x <= xmax and ymin <= y <= ymax and action==5 and speed == 0:  # if robot stands still in charging stop the battery is full again.
         battery = 100
         if old_battery <= battery_value_reward_charging:  # only reward charging if battery was actually low
-            return battery, True
-    return battery, False
+            return battery, old_battery
+    return battery, None  # None for battery not charged

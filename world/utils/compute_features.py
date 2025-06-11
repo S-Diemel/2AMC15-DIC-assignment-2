@@ -74,19 +74,17 @@ def compute_dist_to_target(agent_pos, battery, battery_value_reward_charging, ch
     return dist_target_x, dist_target_y  # return distance on x and y axis to target
 
 
-def compute_target(battery, battery_value_reward_charging, charger_center, carrying, delivery_points, item_spawn_center):
+def compute_target(carrying, delivery_points, item_spawn_center):
     """
     When an item is carrying an item/package the target is the delivery point for this package, but when the agent is not carrying any items the target 
     will be the center of item/package pickup area. This is because we want the agent to find packages, and not have the direct location. Once it finds 
     a package, it scans the package and knows where this package should be delivered.
     """
-    if battery < battery_value_reward_charging:
-        target_x, target_y = charger_center
+
+    if carrying >= 0:
+        target_x, target_y = delivery_points[carrying]  # Location of delivery point of the item that the agent is carrying
     else:
-        if carrying >= 0:
-            target_x, target_y = delivery_points[carrying]  # Location of delivery point of the item that the agent is carrying
-        else:
-            target_x, target_y = item_spawn_center  # Center of the area where items spawn
+        target_x, target_y = item_spawn_center  # Center of the area where items spawn
     return target_x, target_y
 
 def point_to_rectangle_distance(px, py, rect):
@@ -114,22 +112,18 @@ def find_closest_rectangle_to_edge(rectangles, point):
 
     return closest_index
 
-def compute_area_code(battery, battery_value_reward_charging, charger_center, carrying, delivery_points, item_spawn_center, aisles):
+def compute_area_code(carrying, delivery_points, item_spawn_center, aisles):
 
-    target_x, target_y = compute_target(battery, battery_value_reward_charging, charger_center,
-                                        carrying, delivery_points, item_spawn_center)
+    target_x, target_y = compute_target(carrying, delivery_points, item_spawn_center)
 
     if carrying>=0:
         area = find_closest_rectangle_to_edge(aisles, (target_x, target_y))
         return area
-    elif target_x == charger_center[0] and target_y == charger_center[1]:
+    elif target_x == item_spawn_center[0] and target_y == item_spawn_center[1]:
         area = len(aisles)
         return area
-    elif target_x == item_spawn_center[0] and target_y == item_spawn_center[1]:
-        area = len(aisles)+1
-        return area
     else:
-        return len(aisles)+1
+        return len(aisles)
 
 
 def _ray_march_collision(direction, origin, max_distance, step_size, is_collision_fn):

@@ -73,7 +73,7 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int, e
     """Main loop of the program."""
     num_envs = 5  # Set this to the number of parallel environments you want
     envs = AsyncVectorEnv([make_env() for _ in range(num_envs)])
-    agent = DQNAgent(state_size=13, action_size=6, seed=random_seed)
+    agent = DQNAgent(state_size=14, action_size=6, seed=random_seed)
 
     # Number of episodes to decay the epsilon linearly
     decay_steps = int(epsilon_decay_proportion * (episodes//num_envs) * iters)
@@ -89,7 +89,7 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int, e
         agent.epsilon = epsilon
         # Set difficulty based on curriculum phase (applies to all envs in batch)
         if episode < phase_len:
-            difficulty = 3
+            difficulty = 0
             number_of_items = 1
             battery_drain_per_step = 0
         elif episode < 2 * phase_len:
