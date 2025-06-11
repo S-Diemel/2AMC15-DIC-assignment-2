@@ -5,7 +5,7 @@ Train your RL Agent in this file.
 from argparse import ArgumentParser
 from gymnasium.vector import AsyncVectorEnv
 from tqdm import trange
-from world.environment import Environment
+from world.environment_ppo import Environment
 from agents.ppo import PPOAgent
 import numpy as np
 
