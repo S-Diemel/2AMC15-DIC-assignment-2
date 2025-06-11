@@ -27,7 +27,7 @@ from world.utils.env_init import (
     create_delivery_zones,
 )
 from .gui import render_gui
-from .reward_functions import default_reward_function  # , shaping_reward
+from .reward_functions_ppo import default_reward_function  # , shaping_reward
 
 
 class Environment(gym.Env):
