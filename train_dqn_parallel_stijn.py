@@ -90,7 +90,7 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int, e
         # Set difficulty based on curriculum phase (applies to all envs in batch)
         if episode < phase_len:
             difficulty = 0
-            number_of_items = 1
+            number_of_items = 0
             battery_drain_per_step = 0
         elif episode < 2 * phase_len:
             difficulty = 0

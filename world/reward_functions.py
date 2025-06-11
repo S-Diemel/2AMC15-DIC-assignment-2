@@ -17,7 +17,7 @@ def charging_reward(battery_level, max_reward, battery_level_max_reward=15, min_
         return max_reward * (np.exp(exp_factor * x) - 1) / (np.exp(exp_factor) - 1)
 
 
-def default_reward_function(pickup, delivered, collided, charged_battery_level, battery_died, old_pos, agent_pos, agent_radius, forbidden_zones):
+def default_reward_function(pickup, delivered, collided, charged_battery_level, battery_died, old_pos, agent_pos, agent_radius, forbidden_zones, old_speed):
     """
     Reward function for the agent. It has the following rewards:
     - negative reward in general for taking a step (we want to obtain an optimal route and thus have a minimal number of steps)
@@ -40,8 +40,11 @@ def default_reward_function(pickup, delivered, collided, charged_battery_level, 
         reward += 5
     if delivered:  # delivering an item
         reward += 10
-    if collided:  # colliding with a wall or object
-        reward -= 1
+    if collided: # colliding with a wall or object
+        if old_speed > 0:
+            reward -= old_speed
+        else:
+            reward -= 1
     if _agent_in_forbidden_zone(agent_pos, agent_radius, forbidden_zones):  # being in a forbidden zone
         reward -= 1
     return reward

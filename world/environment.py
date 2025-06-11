@@ -255,6 +255,7 @@ class Environment(gym.Env):
             self.agent_pos, collided = calc_collision(old_pos_extra, new_pos, self.agent_radius, self.width, self.height, self.all_obstacles)      
 
         # if collided set speed to 0
+        old_speed=self.speed
         if collided:
             self.speed = 0
 
@@ -274,7 +275,7 @@ class Environment(gym.Env):
 
         # Compute the reward for this step
         reward = default_reward_function(pickup, delivered, collided, charged, battery_died, old_pos,
-                                         self.agent_pos, self.agent_radius, self.forbidden_zones)
+                                         self.agent_pos, self.agent_radius, self.forbidden_zones, old_speed)
         reward += shaping_reward(old_pos, old_target, self.agent_pos)
 
         # Bookkeeping for ending an episode

@@ -6,7 +6,7 @@ def calc_new_position(action, speed, orientation, agent_angle, agent_pos, step_s
     """Calculate the new position and orientation of the agent within the environment."""
     speed_change, sign_orientation = action_to_values(action)
     new_speed = speed+speed_change
-    new_speed = max(0, min(new_speed, 3))
+    new_speed = max(0, min(new_speed, 2))
     if new_speed > 0:
         new_orientation = (orientation + sign_orientation*agent_angle) % 360
         direction = orientation_to_directions(new_orientation)
