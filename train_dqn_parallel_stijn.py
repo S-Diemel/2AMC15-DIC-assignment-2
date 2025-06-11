@@ -99,19 +99,19 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int, e
         elif episode < 3 * phase_len:
             difficulty = 0
             number_of_items = 3
-            battery_drain_per_step = 0.2
+            battery_drain_per_step = 0.25
         elif episode < 4 * phase_len:
             difficulty = 1
             number_of_items = 3
-            battery_drain_per_step = 0.2
+            battery_drain_per_step = 0.25
         elif episode < 5 * phase_len:
             difficulty = 2
             number_of_items = 3
-            battery_drain_per_step = 0.2
+            battery_drain_per_step = 0.25
         else:
             difficulty = 3
             number_of_items = 3
-            battery_drain_per_step = 0.2
+            battery_drain_per_step = 0.25
 
         print(f"Episode batch {episode + 1}/{episodes // num_envs} - Epsilon: {epsilon:.4f}")
 

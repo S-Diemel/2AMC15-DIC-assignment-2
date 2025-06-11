@@ -279,7 +279,7 @@ class Environment(gym.Env):
         reward += shaping_reward(old_pos, old_target, self.agent_pos)
 
         # Bookkeeping for ending an episode
-        terminated = all(self.delivered) # terminated: relates to success/failure
+        terminated = all(self.delivered) and self.battery==100 # terminated: relates to success/failure
         truncated = battery_died # Truncated: relates to early stopping
 
         # Update some statistics
