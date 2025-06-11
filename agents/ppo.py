@@ -11,7 +11,7 @@ from agents import BaseAgent
 class ActorCritic(nn.Module):
     """
     Simple Actor Critic Neural Network with 1 hidden layer, 64x64
-    Small network and 1 hidden layer should be enough for our simple gridword problem
+    Small network and 1 hidden layer should be enough for our simple gridworld problem
     """
     def __init__(self, state_size: int, action_size: int):
         super().__init__()
@@ -50,16 +50,18 @@ class RolloutBuffer:
         self.log_probs = np.zeros((rollout_steps, num_envs), dtype=np.float32)
         self.values = np.zeros((rollout_steps, num_envs), dtype=np.float32)
         self.terminated = np.zeros((rollout_steps, num_envs), dtype=np.bool_)
+        self.truncated = np.zeros((rollout_steps, num_envs), dtype=np.bool_)
         self.pos = 0
         self.full = False
 
-    def add(self, state, action, reward, log_prob, value, terminated):
+    def add(self, state, action, reward, log_prob, value, terminated, truncated):
         self.states[self.pos] = state
         self.actions[self.pos] = action
         self.rewards[self.pos] = reward
         self.log_probs[self.pos] = log_prob
         self.values[self.pos] = value
         self.terminated[self.pos] = terminated
+        self.truncated[self.pos] = truncated
 
         self.pos += 1
         if self.pos == self.rollout_steps:
@@ -115,6 +117,8 @@ class PPOAgent(BaseAgent):
         state_tensor = torch.from_numpy(states).float().to(self.device)
         with torch.no_grad():
             probs, values = self.policy_old(state_tensor)
+            probs = probs + 1e-8    # Prevent 0 or very near to 0 probabilities
+            probs = probs / probs.sum(dim=-1, keepdim=True)
             dist = torch.distributions.Categorical(probs)
             actions = dist.sample()
             log_probs = dist.log_prob(actions)
@@ -134,17 +138,20 @@ class PPOAgent(BaseAgent):
 
         return greedy_action
 
-    def compute_gae_and_returns(self, last_values, last_terminated):
-        """Compute GAE and returns for all environments at once"""
+    def compute_gae_and_returns(self, last_values, last_terminated, last_truncated):
+        """Compute GAE and returns for all environments in parallel"""
         values = np.concatenate([self.buffer.values, last_values[np.newaxis, :]], axis=0)
         rewards = self.buffer.rewards
         terminated = np.concatenate([self.buffer.terminated, last_terminated[np.newaxis, :]], axis=0)
+        truncated = np.concatenate([self.buffer.truncated, last_truncated[np.newaxis, :]], axis=0)
 
         advantages = np.zeros_like(rewards)
-        gae = 0.0
+        gae = np.zeros(self.num_envs)
+
         for step in reversed(range(self.rollout_steps)):
-            delta = rewards[step] + self.gamma * values[step + 1] * (1 - terminated[step]) - values[step]
-            gae = delta + self.gamma * self.gae_lambda * (1 - terminated[step]) * gae
+            not_done = 1.0 - np.logical_or(terminated[step], truncated[step]).astype(np.float32)
+            delta = rewards[step] + self.gamma * values[step + 1] * not_done - values[step]
+            gae = delta + self.gamma * self.gae_lambda * not_done * gae
             advantages[step] = gae
 
         returns = advantages + self.buffer.values
@@ -160,9 +167,10 @@ class PPOAgent(BaseAgent):
             last_states = torch.tensor(self.buffer.states[-1], dtype=torch.float32).to(self.device)
             last_values = self.policy_old(last_states)[1].squeeze(-1).cpu().numpy()
             last_terminated = self.buffer.terminated[-1].copy()
+            last_truncated = self.buffer.truncated[-1].copy()
 
         # Compute advantages and returns
-        advantages, returns = self.compute_gae_and_returns(last_values, last_terminated)
+        advantages, returns = self.compute_gae_and_returns(last_values, last_terminated, last_truncated)
 
         # Flatten all buffers and normalize advantages
         states = self.buffer.states.reshape(-1, self.state_size)
@@ -215,9 +223,9 @@ class PPOAgent(BaseAgent):
         self.policy_old.load_state_dict(self.policy.state_dict())
         self.buffer.clear()
 
-    def update(self, states, actions, rewards, log_probs, values, terminated):
+    def update(self, states, actions, rewards, log_probs, values, terminated, truncated):
         """Add batch of experiences from all environments"""
-        self.buffer.add(states, actions, rewards, log_probs, values, terminated)
+        self.buffer.add(states, actions, rewards, log_probs, values, terminated, truncated)
 
         if self.buffer.full:
             self.learn()

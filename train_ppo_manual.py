@@ -8,6 +8,8 @@ from tqdm import trange
 from world.environment_ppo import Environment
 from agents.ppo import PPOAgent
 import numpy as np
+from torch.utils.tensorboard import SummaryWriter
+writer = SummaryWriter()
 
 def parse_args():
     p = ArgumentParser(description="DIC Reinforcement Learning Trainer.")
@@ -17,7 +19,7 @@ def parse_args():
                    help="Disables rendering to train faster")
     p.add_argument("--episodes", type=int, default=5_000,
                    help="Number of episodes to train the agent for. Each episode is completed by either reaching the target, or putting `iters` steps.")
-    p.add_argument("--iters", type=int, default=1_000,
+    p.add_argument("--iters", type=int, default=500,
                    help="Number of iterations to go through.")
     p.add_argument("--random_seed", type=int, default=0,
                    help="Random seed value for the environment.")
@@ -68,7 +70,7 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
         print(f"Episode batch {episode + 1}/{episodes}")
 
         # Evaluate every few episodes
-        difficulty, number_of_items, battery_drain_per_step = set_difficulty(episode, phase_len)
+        difficulty, number_of_items, battery_drain_per_step = 0, 3, 0.5
 
         # Set difficulty for curriculum learning
         opts = {"difficulty": difficulty, 'number_of_items': number_of_items,
@@ -97,7 +99,8 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
                 rewards=rewards,
                 log_probs=log_probs,
                 values=values,
-                terminated=terminated
+                terminated=terminated,
+                truncated=truncated
             )
 
             # Track rewards
@@ -105,7 +108,7 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
             active_envs &= ~(terminated | truncated)
 
             # Prepare for next step
-            states = next_states
+            states = next_states.astype(np.float32)
 
             # Check if we should learn (now handled inside update())
             if not np.any(active_envs):
@@ -114,25 +117,22 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
         # Print average reward across environments
         avg_reward = np.mean(episode_rewards)
         print(f"Average reward across {num_envs} envs: {avg_reward:.2f}")
+        writer.add_scalar('Reward/Avg', avg_reward, global_step=episode)
         terminated_envs = [not i for i in active_envs]
         print(terminated_envs)
 
         # Optional: Save model periodically
         if episode % 100 == 0:
-            agent.save(f"ppo_agent_{episode}.pth")
+            agent.save(f"best_ppo_agent_yet.pth")
 
-        # if env_gui:
-        #     env.close()
 
-    # grid_name = grid.stem  # Get the grid name from the path
-    # # after all episodes for this grid
-    # model_path = f"models/ppo_{grid_name}_test.pth"
-    # agent.save(model_path)
-    # print(f"Saved trained model to -> {model_path}")
+    # After training completed
+    envs.close()
+    writer.close()
 
-    # # Evaluate the agent
-    # Environment.evaluate_agent(grid, agent, iters, sigma, random_seed=None, agent_start_pos=(9, 13), target_positions=[(11, 3)])
-
+    model_path = "best_ppo_agent_yet.pth"
+    agent.save(model_path)
+    print(f"Saved trained model to -> {model_path}")
 
 if __name__ == '__main__':
     args = parse_args()
