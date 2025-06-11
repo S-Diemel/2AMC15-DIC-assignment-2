@@ -111,11 +111,11 @@ class Environment(gym.Env):
             0.0,   # carrying flag
             -1.0,  # dist_target_x / width
             -1.0,  # dist_target_y / height
-            # 0.0,   # steps_left / max_range
+            0.0,   # steps_left / max_range
             0.0,   # steps_fw_left / max_range
             0.0,   # steps_fw / max_range
             0.0,   # steps_fw_right / max_range
-            # 0.0,   # steps_right / max_range
+            0.0,   # steps_right / max_range
             # 0.0,   # item_left / max_range
             # 0.0,   # item_fw_left / max_range
             # 0.0,   # item_fw / max_range
@@ -133,11 +133,11 @@ class Environment(gym.Env):
             1.0,  # carrying flag
             1.0,  # dist_target_x / width
             1.0,  # dist_target_y / height
-            # 1.0,  # steps_left / max_range
+            1.0,  # steps_left / max_range
             1.0,  # steps_fw_left / max_range
             1.0,  # steps_fw / max_range
             1.0,  # steps_fw_right / max_range
-            # 1.0,  # steps_right / max_range
+            1.0,  # steps_right / max_range
             # 1.0,  # item_left / max_range
             # 1.0,  # item_fw_left / max_range
             # 1.0,  # item_fw / max_range
@@ -168,6 +168,8 @@ class Environment(gym.Env):
 
         if options is not None:
             self.difficulty = options.get("difficulty", self.difficulty)
+            if self.difficulty==3:
+                self.difficulty=None
             self.number_of_items = options.get("number_of_items", self.number_of_items)
             self.battery_drain_per_step = options.get("battery_drain_per_step", self.battery_drain_per_step)
         if difficulty==3:
@@ -281,10 +283,10 @@ class Environment(gym.Env):
         # Distance to wall or object at 5 angles from the agent
         steps_fw = compute_distance_to_wall(self.orientation, self.max_range, 
             self.agent_radius, self.agent_pos, self.width, self.height, self.all_obstacles)
-        # steps_left = compute_distance_to_wall((self.orientation-2*self.agent_angle)%360,
-        #     self.max_range, self.agent_radius, self.agent_pos, self.width, self.height, self.all_obstacles) # Left 90
-        # steps_right = compute_distance_to_wall((self.orientation+2*self.agent_angle)%360,
-        #     self.max_range, self.agent_radius, self.agent_pos, self.width, self.height, self.all_obstacles)  # Right 90
+        steps_left = compute_distance_to_wall((self.orientation-2*self.agent_angle)%360,
+            self.max_range, self.agent_radius, self.agent_pos, self.width, self.height, self.all_obstacles) # Left 90
+        steps_right = compute_distance_to_wall((self.orientation+2*self.agent_angle)%360,
+            self.max_range, self.agent_radius, self.agent_pos, self.width, self.height, self.all_obstacles)  # Right 90
         steps_fw_left = compute_distance_to_wall((self.orientation-self.agent_angle)%360, 
             self.max_range, self.agent_radius, self.agent_pos, self.width, self.height, self.all_obstacles) # Left 45
         steps_fw_right = compute_distance_to_wall((self.orientation+self.agent_angle)%360, 
@@ -300,7 +302,7 @@ class Environment(gym.Env):
         #     self.max_range, self.agent_radius, self.agent_pos, self.item_starts, self.item_radius, self.delivered, self.carrying)
         # item_fw_right = item_sensor((self.orientation+self.agent_angle)%360,
         #     self.max_range, self.agent_radius, self.agent_pos, self.item_starts, self.item_radius, self.delivered, self.carrying)
-        vision_triangle_sensor = calc_dist_to_item_in_triangle(self.agent_pos, self.max_range, self.agent_radius, self.item_starts, self.delivered, self.carrying, self.vision_triangle, self.all_obstacles)
+        vision_triangle_sensor = calc_dist_to_item_in_triangle(self.agent_pos, self.max_range, self.agent_radius, self.item_starts, self.delivered, self.carrying, self.vision_triangle, self.all_obstacles, self.delivery_points)
         # Binary indicator whether agent is carrying an item
         can_interact = calc_can_interact(self.agent_pos, self.agent_radius, self.items, self.item_radius, self.delivery_points, self.delivery_radius, self.delivered, self.carrying, self.charger)
         if self.carrying >= 0:
@@ -308,7 +310,7 @@ class Environment(gym.Env):
         else:
             carrying = 0
         # Distance between agent and target on x and y axis.
-        dist_target_x, dist_target_y = compute_dist_to_target(self.agent_pos, self.battery, self.battery_value_reward_charging, 
+        target_x, target_y = compute_target(self.battery, self.battery_value_reward_charging,
                                             self.charger_center, self.carrying, self.delivery_points, self.item_spawn_center)
 
         # Combining everything into a single feature vector
@@ -317,13 +319,13 @@ class Environment(gym.Env):
             y/self.height, 
             self.orientation/self.agent_angle,
             carrying, 
-            dist_target_x/self.width, 
-            dist_target_y/self.height,
-            #steps_left/self.max_range,
+            target_x/self.width,
+            target_y/self.height,
+            steps_left/self.max_range,
             steps_fw_left/self.max_range,
             steps_fw/self.max_range,
             steps_fw_right/self.max_range,
-            #steps_right/self.max_range,
+            steps_right/self.max_range,
             #item_left/self.max_range,
             # item_fw_left/self.max_range,
             # item_fw/self.max_range,

@@ -149,11 +149,16 @@ def is_point_in_triangle(point, triangle):
 
 
 
-def calc_dist_to_item_in_triangle(agent_pos, max_range, agent_radius, item_starts, delivered, carrying, vision_triangle, all_obstacles):
+def calc_dist_to_item_in_triangle(agent_pos, max_range, agent_radius, item_starts, delivered, carrying, vision_triangle, all_obstacles, delivery_points):
     """
     calc min distance to item in the vision triangle
     """
-    valid_items = [pos for i, pos in enumerate(item_starts) if not delivered[i] and carrying != i]
+    if carrying==-1:
+        valid_items = [pos for i, pos in enumerate(item_starts) if not delivered[i] and carrying != i]
+    elif carrying>=0:
+        valid_items = [pos for i, pos in enumerate(delivery_points) if not delivered[i] and carrying == i]
+    else:
+        valid_items = []
     if not valid_items:
         return max_range
     min_distance=max_range
