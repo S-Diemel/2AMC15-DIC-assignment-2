@@ -73,7 +73,7 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int, e
     """Main loop of the program."""
     num_envs = 5  # Set this to the number of parallel environments you want
     envs = AsyncVectorEnv([make_env() for _ in range(num_envs)])
-    agent = DQNAgent(state_size=13, action_size=6, seed=random_seed)
+    agent = DQNAgent(state_size=12, action_size=6, seed=random_seed)
 
     # Number of episodes to decay the epsilon linearly
     decay_steps = int(epsilon_decay_proportion * (episodes//num_envs) * iters)
@@ -121,12 +121,15 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int, e
         opts = {"difficulty": difficulty, 'number_of_items': number_of_items, 'battery_drain_per_step': battery_drain_per_step}
         states, _ = envs.reset(options=opts)
         done_flags = num_envs*[False]
+        terminated_flags = num_envs*[False]
         for _ in trange(iters):
             # take action + step in `num_envs` parallel environments
             actions = [agent.take_action(state) for state in states]
             next_states, rewards, terminateds, truncateds, _ = envs.step(actions)
             for j in range(num_envs):
                 done = terminateds[j] or truncateds[j]
+                if terminateds[j]:
+                    terminated_flags[j] = True
                 if done_flags[j]==False:
                     agent.update(states[j], actions[j], rewards[j], next_states[j], done)
                     if done:
@@ -135,7 +138,7 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int, e
             if all(done_flags):
                 break
 
-        print(done_flags)
+        print(terminated_flags)
     model_path = f"models/dqn_{name}_final.pth"
     agent.save(model_path)
     print(f"Saved trained model to -> {model_path}")

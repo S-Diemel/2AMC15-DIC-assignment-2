@@ -89,6 +89,48 @@ def compute_target(battery, battery_value_reward_charging, charger_center, carry
             target_x, target_y = item_spawn_center  # Center of the area where items spawn
     return target_x, target_y
 
+def point_to_rectangle_distance(px, py, rect):
+    xmin, ymin, xmax, ymax = rect
+
+    # Clamp point to rectangle bounds
+    closest_x = max(xmin, min(px, xmax))
+    closest_y = max(ymin, min(py, ymax))
+
+    # Compute Euclidean distance from point to closest point on rectangle
+    dx = px - closest_x
+    dy = py - closest_y
+    return np.sqrt((dx)**2 + (dy)**2)
+
+def find_closest_rectangle_to_edge(rectangles, point):
+    px, py = point
+    min_distance = float('inf')
+    closest_index = -1
+
+    for i, rect in enumerate(rectangles):
+        dist = point_to_rectangle_distance(px, py, rect)
+        if dist < min_distance:
+            min_distance = dist
+            closest_index = i
+
+    return closest_index
+
+def compute_area_code(battery, battery_value_reward_charging, charger_center, carrying, delivery_points, item_spawn_center, racks):
+
+    target_x, target_y = compute_target(battery, battery_value_reward_charging, charger_center,
+                                        carrying, delivery_points, item_spawn_center)
+
+    if carrying>=0:
+        area = find_closest_rectangle_to_edge(racks, (target_x, target_y))
+        return area
+    elif target_x == charger_center[0] and target_y == charger_center[1]:
+        area = len(racks)
+        return area
+    elif target_x == item_spawn_center[0] and target_y == item_spawn_center[1]:
+        area = len(racks)+1
+        return area
+    else:
+        return len(racks)+1
+
 
 def _ray_march_collision(direction, origin, max_distance, step_size, is_collision_fn):
     """

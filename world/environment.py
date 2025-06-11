@@ -21,7 +21,8 @@ from world.utils.compute_features import (
     compute_dist_to_target,
     compute_target,
     calc_dist_to_item_in_triangle,
-    calc_can_interact
+    calc_can_interact,
+    compute_area_code
 )
 from world.utils.env_init import (
     create_delivery_zones,
@@ -109,8 +110,8 @@ class Environment(gym.Env):
             0.0,   # y / height
             0.0,   # orientation / 45
             0.0,   # carrying flag
-            -1.0,  # dist_target_x / width
-            -1.0,  # dist_target_y / height
+            # -1.0,  # dist_target_x / width
+            # -1.0,  # dist_target_y / height
             0.0,   # steps_left / max_range
             0.0,   # steps_fw_left / max_range
             0.0,   # steps_fw / max_range
@@ -123,7 +124,8 @@ class Environment(gym.Env):
             # 0.0,   # item_right / max_range
             # 0.0    # battery / 100
             0.0, #triangle_vision
-            0.0 # binary can interact with something
+            0.0, # binary can interact with something
+            0.0 # area code
         ], dtype=np.float32)
 
         high = np.array([
@@ -131,8 +133,8 @@ class Environment(gym.Env):
             1.0,  # y / height
             7.0,  # orientation / 45  (possible values: 0…7)
             1.0,  # carrying flag
-            1.0,  # dist_target_x / width
-            1.0,  # dist_target_y / height
+            # 1.0,  # dist_target_x / width
+            # 1.0,  # dist_target_y / height
             1.0,  # steps_left / max_range
             1.0,  # steps_fw_left / max_range
             1.0,  # steps_fw / max_range
@@ -145,7 +147,8 @@ class Environment(gym.Env):
             # 1.0,  # item_right / max_range
             # 1.0   # battery / 100
             1.0, # triangle vision
-            1.0 # binary can interact with something
+            1.0, # binary can interact with something
+            9.0 # area code
         ], dtype=np.float32)
         # Give possible values of observational space
         self.observation_space = spaces.Box(low, high, dtype=np.float32)
@@ -310,8 +313,8 @@ class Environment(gym.Env):
         else:
             carrying = 0
         # Distance between agent and target on x and y axis.
-        target_x, target_y = compute_target(self.battery, self.battery_value_reward_charging,
-                                            self.charger_center, self.carrying, self.delivery_points, self.item_spawn_center)
+        area_code =  compute_area_code(self.battery, self.battery_value_reward_charging,
+                                            self.charger_center, self.carrying, self.delivery_points, self.item_spawn_center, self.racks)
 
         # Combining everything into a single feature vector
         feature_vector = [
@@ -319,8 +322,8 @@ class Environment(gym.Env):
             y/self.height, 
             self.orientation/self.agent_angle,
             carrying, 
-            target_x/self.width,
-            target_y/self.height,
+            # target_x/self.width,
+            # target_y/self.height,
             steps_left/self.max_range,
             steps_fw_left/self.max_range,
             steps_fw/self.max_range,
@@ -333,7 +336,8 @@ class Environment(gym.Env):
             #item_right/self.max_range,
             # self.battery/100.0
             vision_triangle_sensor/self.max_range,
-            can_interact
+            can_interact,
+            area_code,
         ]
         return feature_vector
 

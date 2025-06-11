@@ -45,8 +45,8 @@ def evaluate_agent_training(agent, iters, no_gui, difficulty, number_of_items, b
     state, _ = env.reset(no_gui=no_gui, difficulty=difficulty, number_of_items=number_of_items, battery_drain_per_step=battery_drain_per_step)
     agent.epsilon=epsilon
     for i in trange(iters):
-        #env.render()
-        # time.sleep(3)
+        # env.render()
+        # time.sleep(1)
         # print(state)
 
         action = agent.take_action(state)
