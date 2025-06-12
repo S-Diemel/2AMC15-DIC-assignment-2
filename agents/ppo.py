@@ -37,13 +37,21 @@ class ActorCritic(nn.Module):
 
 class RolloutBuffer:
     """
-    Single buffer for all environments with shape (n_steps, n_envs, ...)
-    PPO fills buffer till n_steps, then learns
+    Single buffer for all environments with shape (n_steps, n_envs, ...).
+
+    PPO fills buffer till n_steps, then learns. It then does a new rollout but does not recall from
+    the previous rollout. So you do not remember old experiences, you only use experiences obtained
+    from the last policy to evaluate the current policy. This keeps the gradient estimates unbiased
+    for the policy you are optimizing. It avoids the stability and divergence issues, experienced by reusing
+    old experiences. 
     """
     def __init__(self, rollout_steps, num_envs, state_size):
+        # Rollout configuration parameters
         self.rollout_steps = rollout_steps
         self.num_envs = num_envs
         self.state_size = state_size
+
+        # Pre-allocation of numpy arrays for efficiency
         self.states = np.zeros((rollout_steps, num_envs, state_size), dtype=np.float32)
         self.actions = np.zeros((rollout_steps, num_envs), dtype=np.int32)
         self.rewards = np.zeros((rollout_steps, num_envs), dtype=np.float32)
@@ -51,10 +59,15 @@ class RolloutBuffer:
         self.values = np.zeros((rollout_steps, num_envs), dtype=np.float32)
         self.terminated = np.zeros((rollout_steps, num_envs), dtype=np.bool_)
         self.truncated = np.zeros((rollout_steps, num_envs), dtype=np.bool_)
+
+        # Position pointer --> index in pre-allocated array to write the experience to
         self.pos = 0
+        # Indicates when the buffer has collected rollout_steps of data
         self.full = False
 
     def add(self, state, action, reward, log_prob, value, terminated, truncated):
+        """Store one timestep of data for all environments in parallel."""
+        # Write each component into the buffer at current position
         self.states[self.pos] = state
         self.actions[self.pos] = action
         self.rewards[self.pos] = reward
@@ -63,11 +76,15 @@ class RolloutBuffer:
         self.terminated[self.pos] = terminated
         self.truncated[self.pos] = truncated
 
+        # Move the pointer by one
         self.pos += 1
+        # Check if we completed the rollout
         if self.pos == self.rollout_steps:
+            # Indicates that the rollout is complete 
             self.full = True
 
     def clear(self):
+        """Resets the buffer for the next batch."""
         self.pos = 0
         self.full = False
 
@@ -98,58 +115,69 @@ class PPOAgent(BaseAgent):
             if torch.cuda.is_available():
                 torch.cuda.manual_seed_all(seed)
 
+        # Use GPU if available to speed up training
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.state_size = state_size
-        self.action_size = action_size
-        self.gamma = gamma
-        self.lr = lr
-        self.eps_clip = eps_clip
-        self.gae_lambda = gae_lambda
-        self.entropy_coef = entropy_coef
-        self.ppo_epochs = ppo_epochs
-        self.batch_size = batch_size
-        self.rollout_steps = rollout_steps
-        self.buffer = RolloutBuffer(rollout_steps, num_envs, state_size)
+
+        # Set hyperparameters
+        self.state_size = state_size  # Dimensionality of state space
+        self.action_size = action_size  # Number of possible actions
+        self.gamma = gamma  # Discounting factor
+        self.lr = lr  # Learning rate for optimizer
+        self.eps_clip = eps_clip  # Clipping for trust region in loss function of actor (surrogate loss)
+        self.gae_lambda = gae_lambda  # lambda parameter for Gneralized Advantage Estimation
+        self.entropy_coef = entropy_coef  # coefficient for entropy which promotes exploration
+        self.ppo_epochs = ppo_epochs  # Number of epochs to run each PPO update
+        self.batch_size = batch_size  # Mini-batch size for each update
+        self.rollout_steps = rollout_steps  # Number of steps to collect before each update
         self.num_envs = num_envs
+
+        # Define the rollout buffer 
+        self.buffer = RolloutBuffer(rollout_steps, num_envs, state_size)
 
         # Policy and value network based on actor-critic network
         self.policy = ActorCritic(state_size, action_size).to(self.device)
         self.policy_old = ActorCritic(state_size, action_size).to(self.device)
         self.policy_old.load_state_dict(self.policy.state_dict())
 
+        # Defining the loss for the critic and the optimizer for the policy Actor Critic network
         self.optimizer = optim.Adam(self.policy.parameters(), lr=self.lr)
         self.mse_loss = nn.MSELoss()
-        self.step_counter = 0
 
     def take_action_training(self, states: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Returns actions for all environments in parallel"""
+        """
+        Returns actions for all environments in parallel. However, during training, we do not grab the
+        greedy action, but we sample from the action distribution. Furthermore we return everything instead of only the action.
+        """
+        # Convert state as numpy arrow to a tensor on the GPU
         state_tensor = torch.from_numpy(states).float().to(self.device)
-        with torch.no_grad():
-            probs, values = self.policy_old(state_tensor)
-            # I don't think this is necessary
+        with torch.no_grad():  # Don't maintain the gradients during a take-action, as we are not updating the network now
+            probs, values = self.policy_old(state_tensor)  # probability distributions for all environments and state values for all environments
+            # TODO: Check this --> I don't think this is necessary
             # probs = probs + 1e-8    # Prevent 0 or very near to 0 probabilities
             # probs = probs / probs.sum(dim=-1, keepdim=True)
             dist = torch.distributions.Categorical(probs)
-            actions = dist.sample()
-            log_probs = dist.log_prob(actions)
+            actions = dist.sample()  # Sample an action from the probability distribution over the actions
+            log_probs = dist.log_prob(actions)  # Return the log probabilities, useful for computing the gradient of the network
 
             values = values.squeeze(-1)  # Removes last dimension if it's 1
 
         return actions.cpu().numpy(), log_probs.cpu().numpy(), values.cpu().numpy()
 
     def take_action(self, state: tuple[int, int] | np.ndarray) -> int:
-        """Returns greedy action for eval"""
+        """Returns greedy action for evaluation."""
+        # Convert state list representation state to numpy array and then to tensor on GPU
         state = np.array(state, dtype=np.float32)
         state_tensor = torch.from_numpy(state).float().unsqueeze(0).to(self.device)
 
         with torch.no_grad():
-            probs, _ = self.policy_old(state_tensor)  # Ignore value estimate during eval
+            # Greedily obtain the action with the highest probability given the state
+            probs, _ = self.policy_old(state_tensor)  # Ignore value estimate of the state during evaluation
             greedy_action = torch.argmax(probs).item()
 
         return greedy_action
 
     def compute_gae_and_returns(self, last_values, last_terminated, last_truncated):
-        """Compute GAE and returns for all environments in parallel"""
+        """Compute GAE and returns for all environments in parallel."""
         values = np.concatenate([self.buffer.values, last_values[np.newaxis, :]], axis=0)
         rewards = self.buffer.rewards
         terminated = np.concatenate([self.buffer.terminated, last_terminated[np.newaxis, :]], axis=0)
@@ -235,18 +263,21 @@ class PPOAgent(BaseAgent):
 
     def update(self, states, actions, rewards, log_probs, values, terminated, truncated):
         """Add batch of experiences from all environments"""
+        # For each experience add all necessary information to the rollout buffer
         self.buffer.add(states, actions, rewards, log_probs, values, terminated, truncated)
 
-        if self.buffer.full:
+        if self.buffer.full:  # If the buffer is full we trigger the learning process
             self.learn()
 
     def save(self, path: str):
+        """Save the current model and optimizer state to allow continuation of training."""
         torch.save({
             'policy_state_dict': self.policy.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
         }, path)
 
     def load(self, path: str):
+        """Load the current model and optimizer state to allow continuation of training."""
         checkpoint = torch.load(path, map_location=self.device)
         self.policy.load_state_dict(checkpoint['policy_state_dict'])
         self.policy_old.load_state_dict(self.policy.state_dict())
