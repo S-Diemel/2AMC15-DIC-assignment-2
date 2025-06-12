@@ -15,22 +15,23 @@ class ActorCritic(nn.Module):
     """
     def __init__(self, state_size: int, action_size: int):
         super().__init__()
-        self.shared = nn.Sequential(
+        self.shared = nn.Sequential(  # create shared feature representation of state for both actor and critic
             nn.Linear(state_size, 128),
             nn.Tanh(),
             nn.Linear(128, 64),
             nn.Tanh(),
         )
-        self.actor = nn.Sequential(
+        self.actor = nn.Sequential(  # Separate actor head for computing the probability distribution across actions
             nn.Linear(64, action_size),
             nn.Softmax(dim=-1)
         )
-        self.critic = nn.Linear(64, 1)
+        self.critic = nn.Linear(64, 1)  # Separate critic head computing a single value per state
 
     def forward(self, x):
         x = self.shared(x)
-        actor_output = self.actor(x)
+        actor_output = self.actor(x)  # Compute the probability distribution over the actions given a state
         critic_output = self.critic(x).squeeze(-1)  # Ensure critic outputs are squeezed
+        # Critic computes a value for each state forming the baseline which we use to compute the advantage of a certain action given a state
         return actor_output, critic_output
 
 
@@ -43,7 +44,6 @@ class RolloutBuffer:
         self.rollout_steps = rollout_steps
         self.num_envs = num_envs
         self.state_size = state_size
-
         self.states = np.zeros((rollout_steps, num_envs, state_size), dtype=np.float32)
         self.actions = np.zeros((rollout_steps, num_envs), dtype=np.int32)
         self.rewards = np.zeros((rollout_steps, num_envs), dtype=np.float32)
@@ -89,6 +89,15 @@ class PPOAgent(BaseAgent):
         num_envs=4
     ):
         super().__init__()
+
+        if seed is not None:
+            # Set all seeds, to make sure we have reproducability
+            random.seed(seed)
+            np.random.seed(seed)
+            torch.manual_seed(seed)
+            if torch.cuda.is_available():
+                torch.cuda.manual_seed_all(seed)
+
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.state_size = state_size
         self.action_size = action_size
@@ -117,15 +126,16 @@ class PPOAgent(BaseAgent):
         state_tensor = torch.from_numpy(states).float().to(self.device)
         with torch.no_grad():
             probs, values = self.policy_old(state_tensor)
-            probs = probs + 1e-8    # Prevent 0 or very near to 0 probabilities
-            probs = probs / probs.sum(dim=-1, keepdim=True)
+            # I don't think this is necessary
+            # probs = probs + 1e-8    # Prevent 0 or very near to 0 probabilities
+            # probs = probs / probs.sum(dim=-1, keepdim=True)
             dist = torch.distributions.Categorical(probs)
             actions = dist.sample()
             log_probs = dist.log_prob(actions)
 
             values = values.squeeze(-1)  # Removes last dimension if it's 1
 
-        return actions.cpu().numpy(), log_probs.cpu().numpy(), values.squeeze(-1).cpu().numpy()
+        return actions.cpu().numpy(), log_probs.cpu().numpy(), values.cpu().numpy()
 
     def take_action(self, state: tuple[int, int] | np.ndarray) -> int:
         """Returns greedy action for eval"""
