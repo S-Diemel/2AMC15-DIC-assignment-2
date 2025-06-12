@@ -41,10 +41,11 @@ def default_reward_function(pickup, delivered, collided, charged_battery_level, 
     if delivered:  # delivering an item
         reward += 10
     if collided: # colliding with a wall or object
+        collision_penalty = 2
         if old_speed > 0:
-            reward -= old_speed
+            reward -= collision_penalty*old_speed
         else:
-            reward -= 1
+            reward -= collision_penalty
     if _agent_in_forbidden_zone(agent_pos, agent_radius, forbidden_zones):  # being in a forbidden zone
         reward -= 1
     return reward

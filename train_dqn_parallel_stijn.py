@@ -81,7 +81,7 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int, e
     """Main loop of the program."""
     num_envs = 5  # Set this to the number of parallel environments you want
     envs = AsyncVectorEnv([make_env() for _ in range(num_envs)])
-    agent = DQNAgent(state_size=14, action_size=6, seed=random_seed)
+    agent = DQNAgent(state_size=15, action_size=6, seed=random_seed)
 
     # Number of episodes to decay the epsilon linearly
     decay_steps = int(epsilon_decay_proportion * (episodes//num_envs) * iters)

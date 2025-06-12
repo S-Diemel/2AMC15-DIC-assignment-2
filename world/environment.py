@@ -20,7 +20,7 @@ from world.utils.compute_features import (
     compute_distance_to_wall,
     compute_dist_to_target,
     compute_target,
-    calc_dist_to_item_in_triangle,
+    calc_vision_triangle_features,
     calc_can_interact,
     compute_area_code
 )
@@ -37,7 +37,7 @@ class Environment(gym.Env):
     def __init__(
         self,
         number_of_items=3,
-        agent_radius=0.4,
+        agent_radius=0.3,
         step_size=0.2,
         sigma=0,
         difficulty=None,  # Difficulty level represented by None (random no particular difficulty level), 0 (easy), 1 (medium), 2 (hard)  
@@ -124,6 +124,7 @@ class Environment(gym.Env):
             # 0.0,   # item_right / max_range
             0.0,    # battery / 100
             0.0, #triangle_vision
+            -1.0, # angle item in vision
             0.0, # binary can interact with something
             0.0, # area code
             0.0, # speed
@@ -148,6 +149,7 @@ class Environment(gym.Env):
             #1.0,  # item_right / max_range
             1.0,   # battery / 100
             1.0, # triangle vision
+            1.0, # angle item in vision
             1.0, # binary can interact with something
             9.0, # area code
             3.0, # speed
@@ -323,7 +325,7 @@ class Environment(gym.Env):
         #     self.max_range, self.agent_radius, self.agent_pos, self.item_starts, self.item_radius, self.delivered, self.carrying)
         # item_fw_right = item_sensor((self.orientation+self.agent_angle)%360,
         #     self.max_range, self.agent_radius, self.agent_pos, self.item_starts, self.item_radius, self.delivered, self.carrying)
-        vision_triangle_sensor = calc_dist_to_item_in_triangle(self.agent_pos, self.max_range, self.agent_radius, self.item_starts, self.delivered, self.carrying, self.vision_triangle, self.all_obstacles, self.delivery_points)
+        vision_triangle_sensor, angle_vision = calc_vision_triangle_features(self.agent_pos, self.max_range, self.agent_radius, self.item_starts, self.delivered, self.carrying, self.vision_triangle, self.all_obstacles, self.delivery_points, self.orientation)
         # Binary indicator whether agent is carrying an item
         can_interact = calc_can_interact(self.agent_pos, self.agent_radius, self.items, self.item_radius, self.delivery_points, self.delivery_radius, self.delivered, self.carrying, self.charger)
         if self.carrying >= 0:
@@ -353,6 +355,7 @@ class Environment(gym.Env):
             #item_right/self.max_range,
             self.battery/100.0,
             vision_triangle_sensor/self.max_range,
+            angle_vision/self.agent_angle,
             can_interact,
             area_code,
             self.speed,

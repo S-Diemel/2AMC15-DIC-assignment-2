@@ -110,7 +110,7 @@ def find_closest_rectangle_to_edge(rectangles, point):
             min_distance = dist
             closest_index = i
 
-    return closest_index
+    return closest_index+1
 
 def compute_area_code(carrying, delivery_points, item_spawn_center, aisles):
 
@@ -119,11 +119,8 @@ def compute_area_code(carrying, delivery_points, item_spawn_center, aisles):
     if carrying>=0:
         area = find_closest_rectangle_to_edge(aisles, (target_x, target_y))
         return area
-    elif target_x == item_spawn_center[0] and target_y == item_spawn_center[1]:
-        area = len(aisles)
-        return area
     else:
-        return len(aisles)
+        return 0
 
 
 def _ray_march_collision(direction, origin, max_distance, step_size, is_collision_fn):
@@ -151,10 +148,24 @@ def _binary_search_collision(direction, origin, low, high, is_collision_fn, iter
             low = mid
     return (low + high) / 2
 
-def _compute_distance_to_obstacles(max_range, agent_radius, agent_pos, all_obstacles, item_pos):
+def _calc_signed_angle(a, b):
+    dot = np.dot(a, b)
+    cross = a[0]*b[1] - a[1]*b[0]  # 2D scalar cross product
+    angle_rad = np.arctan2(cross, dot)  # signed angle in radians
+    angle_deg = np.degrees(angle_rad)
+    return -angle_deg
+
+def _calc_properties_item(max_range, agent_radius, agent_pos, all_obstacles, item_pos, orientation):
+    x, y = item_pos
+    x_agent, y_agent = agent_pos
+    item_distance = np.sqrt((x - x_agent) ** 2 + (y - y_agent) ** 2) - agent_radius
+
     max_distance = max_range + agent_radius
-    direction = np.array((item_pos[0]-agent_pos[0], item_pos[1]-agent_pos[1]))
-    direction = direction / np.linalg.norm(direction)
+    item_direction = np.array((item_pos[0]-agent_pos[0], item_pos[1]-agent_pos[1]))
+    item_direction = item_direction / np.linalg.norm(item_direction)
+    agent_direction = orientation_to_directions(orientation)
+    agent_direction = agent_direction / np.linalg.norm(agent_direction)
+    angle = _calc_signed_angle(agent_direction, item_direction)
 
     def is_collision(pos):
         for (xmin, ymin, xmax, ymax) in all_obstacles:
@@ -162,12 +173,13 @@ def _compute_distance_to_obstacles(max_range, agent_radius, agent_pos, all_obsta
                 return True
         return False
 
-    approx_d = _ray_march_collision(direction, agent_pos, max_distance, step_size=0.5, is_collision_fn=is_collision)
+    approx_d = _ray_march_collision(item_direction, agent_pos, max_distance, step_size=0.5, is_collision_fn=is_collision)
     if approx_d is None:
-        return max_range
+        return item_distance, max_range, angle
 
-    refined_d = _binary_search_collision(direction, agent_pos, max(0, approx_d - 0.5), approx_d, is_collision_fn=is_collision)
-    return min(max(refined_d - agent_radius, 0), max_range)
+    refined_d = _binary_search_collision(item_direction, agent_pos, max(0, approx_d - 0.5), approx_d, is_collision_fn=is_collision)
+    obstacle_dist = min(max(refined_d - agent_radius, 0), max_range)
+    return item_distance, obstacle_dist, angle
 
 def is_point_in_triangle(point, triangle):
     """
@@ -185,10 +197,12 @@ def is_point_in_triangle(point, triangle):
 
 
 
-def calc_dist_to_item_in_triangle(agent_pos, max_range, agent_radius, item_starts, delivered, carrying, vision_triangle, all_obstacles, delivery_points):
+def calc_vision_triangle_features(agent_pos, max_range, agent_radius, item_starts, delivered, carrying, vision_triangle, all_obstacles, delivery_points, orientation):
     """
     calc min distance to item in the vision triangle
     """
+    angle = 0
+
     if carrying==-1:
         valid_items = [pos for i, pos in enumerate(item_starts) if not delivered[i] and carrying != i]
     elif carrying>=0:
@@ -196,18 +210,16 @@ def calc_dist_to_item_in_triangle(agent_pos, max_range, agent_radius, item_start
     else:
         valid_items = []
     if not valid_items:
-        return max_range
+        return max_range, angle
+
     min_distance=max_range
     for item in valid_items:
         if is_point_in_triangle(item, vision_triangle):
-            x, y = item
-            x_agent, y_agent = agent_pos
-            distance = np.sqrt((x - x_agent) ** 2 + (y - y_agent) ** 2) - agent_radius
-            obstacle_distance = _compute_distance_to_obstacles(max_range, agent_radius, agent_pos, all_obstacles, item)
+            distance, obstacle_distance, angle = _calc_properties_item(max_range, agent_radius, agent_pos, all_obstacles, item, orientation)
             if distance < obstacle_distance:
                 if distance < min_distance:
                     min_distance = distance
-    return max(0, min_distance)
+    return max(0, min_distance), angle
 
 def calc_can_interact(agent_pos, agent_radius, items, item_radius, delivery_points, delivery_radius, delivered, carrying, charger):
     for i, (pos, delivered_status) in enumerate(zip(items, delivered)):
