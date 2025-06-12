@@ -74,20 +74,56 @@ def compute_dist_to_target(agent_pos, battery, battery_value_reward_charging, ch
     return dist_target_x, dist_target_y  # return distance on x and y axis to target
 
 
-def compute_target(battery, battery_value_reward_charging, charger_center, carrying, delivery_points, item_spawn_center):
+def compute_target(carrying, delivery_points, item_spawn_center):
     """
     When an item is carrying an item/package the target is the delivery point for this package, but when the agent is not carrying any items the target 
     will be the center of item/package pickup area. This is because we want the agent to find packages, and not have the direct location. Once it finds 
     a package, it scans the package and knows where this package should be delivered.
     """
-    if battery < battery_value_reward_charging:
-        target_x, target_y = charger_center
+
+    if carrying >= 0:
+        target_x, target_y = delivery_points[carrying]  # Location of delivery point of the item that the agent is carrying
     else:
-        if carrying >= 0:
-            target_x, target_y = delivery_points[carrying]  # Location of delivery point of the item that the agent is carrying
-        else:
-            target_x, target_y = item_spawn_center  # Center of the area where items spawn
+        target_x, target_y = item_spawn_center  # Center of the area where items spawn
     return target_x, target_y
+
+def point_to_rectangle_distance(px, py, rect):
+    xmin, ymin, xmax, ymax = rect
+
+    # Clamp point to rectangle bounds
+    closest_x = max(xmin, min(px, xmax))
+    closest_y = max(ymin, min(py, ymax))
+
+    # Compute Euclidean distance from point to closest point on rectangle
+    dx = px - closest_x
+    dy = py - closest_y
+    return np.sqrt((dx)**2 + (dy)**2)
+
+def find_closest_rectangle_to_edge(rectangles, point):
+    px, py = point
+    min_distance = float('inf')
+    closest_index = -1
+
+    for i, rect in enumerate(rectangles):
+        dist = point_to_rectangle_distance(px, py, rect)
+        if dist < min_distance:
+            min_distance = dist
+            closest_index = i
+
+    return closest_index
+
+def compute_area_code(carrying, delivery_points, item_spawn_center, aisles):
+
+    target_x, target_y = compute_target(carrying, delivery_points, item_spawn_center)
+
+    if carrying>=0:
+        area = find_closest_rectangle_to_edge(aisles, (target_x, target_y))
+        return area
+    elif target_x == item_spawn_center[0] and target_y == item_spawn_center[1]:
+        area = len(aisles)
+        return area
+    else:
+        return len(aisles)
 
 
 def _ray_march_collision(direction, origin, max_distance, step_size, is_collision_fn):
@@ -149,11 +185,16 @@ def is_point_in_triangle(point, triangle):
 
 
 
-def calc_dist_to_item_in_triangle(agent_pos, max_range, agent_radius, item_starts, delivered, carrying, vision_triangle, all_obstacles):
+def calc_dist_to_item_in_triangle(agent_pos, max_range, agent_radius, item_starts, delivered, carrying, vision_triangle, all_obstacles, delivery_points):
     """
     calc min distance to item in the vision triangle
     """
-    valid_items = [pos for i, pos in enumerate(item_starts) if not delivered[i] and carrying != i]
+    if carrying==-1:
+        valid_items = [pos for i, pos in enumerate(item_starts) if not delivered[i] and carrying != i]
+    elif carrying>=0:
+        valid_items = [pos for i, pos in enumerate(delivery_points) if not delivered[i] and carrying == i]
+    else:
+        valid_items = []
     if not valid_items:
         return max_range
     min_distance=max_range

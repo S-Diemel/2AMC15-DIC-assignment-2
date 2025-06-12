@@ -16,7 +16,7 @@ def parse_args():
                    help="Name of the model to save. ")
     p.add_argument("--no_gui", action="store_true",
                    help="Disables rendering to train faster")
-    p.add_argument("--episodes", type=int, default=5000,
+    p.add_argument("--episodes", type=int, default=10000,
                    help="Number of episodes to train the agent for. " \
                    "Each episode is completed by either reaching the target, or putting `iters` steps.")
     p.add_argument("--iters", type=int, default=1000,
@@ -49,7 +49,23 @@ def get_epsilon(episode, phase_len):
         phase_episode = episode - phase_len
     elif episode < 3 * phase_len:
         # Phase 3
-        eps_start, eps_end = 0.3, 0.05
+        eps_start, eps_end = 0.5, 0.05
+        phase_episode = episode - 2 * phase_len
+    elif episode < 4 * phase_len:
+        # Phase 3
+        eps_start, eps_end = 0.5, 0.05
+        phase_episode = episode - 2 * phase_len
+    elif episode < 5 * phase_len:
+        # Phase 3
+        eps_start, eps_end = 0.3, 0.01
+        phase_episode = episode - 2 * phase_len
+    elif episode < 6 * phase_len:
+        # Phase 3
+        eps_start, eps_end = 0.5, 0.05
+        phase_episode = episode - 2 * phase_len
+    elif episode < 7 * phase_len:
+        # Phase 3
+        eps_start, eps_end = 0.3, 0.01
         phase_episode = episode - 2 * phase_len
     else:
         # Phase 4+
@@ -65,14 +81,14 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int, e
     """Main loop of the program."""
     num_envs = 5  # Set this to the number of parallel environments you want
     envs = AsyncVectorEnv([make_env() for _ in range(num_envs)])
-    agent = DQNAgent(state_size=11, action_size=6, seed=random_seed)
+    agent = DQNAgent(state_size=14, action_size=6, seed=random_seed)
 
     # Number of episodes to decay the epsilon linearly
     decay_steps = int(epsilon_decay_proportion * (episodes//num_envs) * iters)
     initial_epsilon = epsilon  # Store initial epsilon for decay calculation
 
     # Curriculum schedule: split episodes into 4 equal parts
-    phase_len = episodes // (4*num_envs)
+    phase_len = episodes // (8*num_envs)
 
     total_steps = 0
 
@@ -81,36 +97,55 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int, e
         agent.epsilon = epsilon
         # Set difficulty based on curriculum phase (applies to all envs in batch)
         if episode < phase_len:
-            difficulty = 0  # easy
+            difficulty = 0
             number_of_items = 1
             battery_drain_per_step = 0
         elif episode < 2 * phase_len:
-            difficulty = 0  # medium
-            number_of_items = 3
-            battery_drain_per_step = 0
+            difficulty = 0
+            number_of_items = 1
+            battery_drain_per_step = 0.25
         elif episode < 3 * phase_len:
-            difficulty = 0  # medium
+            difficulty = 0
             number_of_items = 3
-            battery_drain_per_step = 0.2
+            battery_drain_per_step = 0.25
+        elif episode < 4 * phase_len:
+            difficulty = 1
+            number_of_items = 3
+            battery_drain_per_step = 0.25
+        elif episode < 5 * phase_len:
+            difficulty = 1
+            number_of_items = 3
+            battery_drain_per_step = 0.25
+        elif episode < 6 * phase_len:
+            difficulty = 2
+            number_of_items = 3
+            battery_drain_per_step = 0.25
+        elif episode < 7 * phase_len:
+            difficulty = 2
+            number_of_items = 3
+            battery_drain_per_step = 0.25
         else:
-            difficulty = 0 # no difficulty, just train on any problem
+            difficulty = 3
             number_of_items = 3
-            battery_drain_per_step = 0.5
+            battery_drain_per_step = 0.25
 
         print(f"Episode batch {episode + 1}/{episodes // num_envs} - Epsilon: {epsilon:.4f}")
 
-        if not no_gui and (episode+1) % 50 == 0 and episode != 0:
-            evaluate_agent_training(agent=agent, iters=500, no_gui=False, difficulty=difficulty, number_of_items= number_of_items, battery_drain_per_step= battery_drain_per_step)
+        if not no_gui and (episode+1) % 100 == 0 and episode != 0:
+            evaluate_agent_training(agent=agent, iters=500, no_gui=False, difficulty=difficulty, number_of_items= number_of_items, battery_drain_per_step= battery_drain_per_step, epsilon=0.1)
         agent.epsilon=epsilon
         opts = {"difficulty": difficulty, 'number_of_items': number_of_items, 'battery_drain_per_step': battery_drain_per_step}
         states, _ = envs.reset(options=opts)
         done_flags = num_envs*[False]
+        terminated_flags = num_envs*[False]
         for _ in trange(iters):
             # take action + step in `num_envs` parallel environments
             actions = [agent.take_action(state) for state in states]
             next_states, rewards, terminateds, truncateds, _ = envs.step(actions)
             for j in range(num_envs):
                 done = terminateds[j] or truncateds[j]
+                if terminateds[j]:
+                    terminated_flags[j] = True
                 if done_flags[j]==False:
                     agent.update(states[j], actions[j], rewards[j], next_states[j], done)
                     if done:
@@ -119,7 +154,7 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int, e
             if all(done_flags):
                 break
 
-        print(done_flags)
+        print(terminated_flags)
     model_path = f"models/dqn_{name}_final.pth"
     agent.save(model_path)
     print(f"Saved trained model to -> {model_path}")

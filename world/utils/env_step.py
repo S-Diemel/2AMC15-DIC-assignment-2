@@ -4,18 +4,19 @@ from .action_mapping import action_to_values, orientation_to_directions
 
 def calc_new_position(action, speed, orientation, agent_angle, agent_pos, step_size):
     """Calculate the new position and orientation of the agent within the environment."""
-    new_speed, sign_orientation = action_to_values(action)
-
-    if new_speed == 1:
+    speed_change, sign_orientation = action_to_values(action)
+    new_speed = speed+speed_change
+    new_speed = max(0, min(new_speed, 2))
+    if new_speed > 0:
         new_orientation = (orientation + sign_orientation*agent_angle) % 360
         direction = orientation_to_directions(new_orientation)
         direction = direction / np.linalg.norm(direction)
-        new_position = np.array([agent_pos[0] + step_size*direction[0], agent_pos[1] + step_size*direction[1]])
-        return new_orientation, new_position
+        new_position = np.array([agent_pos[0] + new_speed*step_size*direction[0], agent_pos[1] + new_speed*step_size*direction[1]])
+        return new_orientation, new_position, new_speed
     else:
         new_orientation = (orientation + sign_orientation*agent_angle) % 360
         new_position = agent_pos
-        return new_orientation, new_position
+        return new_orientation, new_position, new_speed
 
 
 def calc_collision(old_pos, new_position, agent_radius, width, height, all_obstacles):
@@ -97,5 +98,5 @@ def update_battery(battery, battery_drain_per_step, agent_pos, charger, speed, b
     if xmin <= x <= xmax and ymin <= y <= ymax and action==5 and speed == 0:  # if robot stands still in charging stop the battery is full again.
         battery = 100
         if old_battery <= battery_value_reward_charging:  # only reward charging if battery was actually low
-            return battery, True
-    return battery, False
+            return battery, old_battery
+    return battery, None  # None for battery not charged

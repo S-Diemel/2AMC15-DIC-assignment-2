@@ -4,11 +4,11 @@ def action_to_values(action):
     second index indicates change in orientation in 45 degree increments.
     """
     values = {
-        0: (1, 0),      # go
-        1: (0, -1),     # left 45 inplace
-        2: (0, 1),     # right 45 inplace
-        3: (1, -1),      # left 45 and forward
-        4: (1, 1),      # right 45 and forward
+        0: (1, 0),      # accelerate
+        1: (-1, 0),     # deccelerate
+        2: (0, -1),     # left 45
+        3: (0, 1),      # right 45
+        4: (0, 0),      # do nothing
         5: (0, 0)       # interact
     }
     return values[action]
