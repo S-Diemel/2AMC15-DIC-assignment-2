@@ -1,0 +1,18 @@
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps
+0.0		0.10		926.50
+0.1		0.10		921.60
+0.3		0.50		730.80
+0.5		0.20		894.80
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps
+0		0.10		920.40
+1		0.30		804.20
+2		0.00		1000.00
+3		0.10		920.60
+4		0.40		744.20
+5		0.00		1000.00
