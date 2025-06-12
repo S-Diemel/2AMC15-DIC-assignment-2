@@ -33,10 +33,10 @@ def evaluate(model_path: Path):
     # Load agent
     # NOTE: Must pass the same state_size and action_size used in training
     agent = DQNAgent.load(str(model_path),
-                          state_size=11,
+                          state_size=14,
                           action_size=6)
     for i in range(5):
-        evaluate_agent_training(agent, 1000, False, 0, 3, 0.5, 0.1)
+        evaluate_agent_training(agent, 1000, False, 3, 4, 0.25, 0.01)
 
 
 def evaluate_agent_training(agent, iters, no_gui, difficulty, number_of_items, battery_drain_per_step, epsilon):
