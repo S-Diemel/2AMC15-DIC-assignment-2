@@ -202,7 +202,7 @@ def calc_vision_triangle_features(agent_pos, max_range, agent_radius, item_start
     calc min distance to item in the vision triangle
     """
     angle = 0
-
+    max_range=3
     if carrying==-1:
         valid_items = [pos for i, pos in enumerate(item_starts) if not delivered[i] and carrying != i]
     elif carrying>=0:

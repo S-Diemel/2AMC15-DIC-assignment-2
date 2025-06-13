@@ -109,6 +109,7 @@ def set_difficulty_of_env(item_spawn, width, height, difficulty=None):
         return difficulty_region
 
 def calc_vision_triangle(agent_pos, orientation, max_range, agent_radius):
+    max_range=3
     """Calc the corners of the vision triangle"""
     left_side_triangle = (orientation-45)%360
     right_side_triangle = (orientation+45)%360
