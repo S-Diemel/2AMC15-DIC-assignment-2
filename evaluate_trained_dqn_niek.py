@@ -8,6 +8,7 @@ from world.environment import Environment
 from tqdm import trange
 import numpy as np
 import argparse
+import random
 from world.utils.env_init import (
     create_delivery_zones,
 )
@@ -90,7 +91,9 @@ def experiment_target_distance(agent):
         ]
         '''
         env = Environment()
-        delivery_zones = create_delivery_zones(env.racks, env.width, env.height, margin=0.5 + i * 0.2)
+        zones = create_delivery_zones(env.racks, env.width, env.height, margin=0.5 + i * 0.1)
+        delivery_zones = random.sample(zones, 3)
+        print(f"level {i}: {delivery_zones}")
         successes = 0
         steps_record = []
         for _ in range(10):
@@ -140,12 +143,12 @@ def append_to_txt(title, x, success_rates, steps):
 def evaluate(model_path: Path):
     agent = DQNAgent.load(str(model_path), state_size=15, action_size=6)
     agent.epsilon = 0.0
-    experiment_stochasticity(agent)
+    #experiment_stochasticity(agent)
     print("Experiment Stochasticity Finished!")
-    experiment_difficulty(agent)
+    #experiment_difficulty(agent)
     print("Experiment Difficulty Finished!")
     experiment_target_distance(agent)
-    print("Experiment Target Distance Finished!!")
+    print("Experiment Target Distance Finished!")
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
