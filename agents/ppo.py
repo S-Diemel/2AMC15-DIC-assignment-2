@@ -83,7 +83,7 @@ class PPOAgent(BaseAgent):
         entropy_coef=0.01,
         ppo_epochs=4,
         batch_size=64,
-        rollout_steps=1024,
+        rollout_steps=2048,
         num_envs=4
     ):
         super().__init__()
@@ -171,8 +171,9 @@ class PPOAgent(BaseAgent):
         returns = returns.flatten()
         advantages = advantages.flatten()
 
-        # Normalize advantages across all environments and timesteps
+        # Normalize advantages and rewards across all environments and timesteps
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        returns = (returns - returns.mean()) / (returns.std() + 1e-8)
 
         # Create DataLoader
         dataset = TensorDataset(

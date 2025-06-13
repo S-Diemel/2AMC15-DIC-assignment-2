@@ -18,7 +18,7 @@ def parse_args():
                    help="Disables rendering to train faster")
     p.add_argument("--episodes", type=int, default=10_000,
                    help="Number of episodes to train the agent for. Each episode is completed by either reaching the target, or putting `iters` steps.")
-    p.add_argument("--iters", type=int, default=1_000,
+    p.add_argument("--iters", type=int, default=500,
                    help="Number of iterations to go through.")
     p.add_argument("--random_seed", type=int, default=0,
                    help="Random seed value for the environment.")
@@ -66,12 +66,17 @@ def set_difficulty(episode, phase_len):
 
     return difficulty, number_of_items, battery_drain_per_step
 
+def get_entropy_coef(episode, phase_len, base_entropy=0.05, min_entropy=0.01):
+    # Linearly decay entropy_coef each phase
+    phase = min(episode // phase_len, 7)  # cap at last phase
+    decay_factor = 0.9 ** phase  # exponential decay
+    return max(base_entropy * decay_factor, min_entropy)
 
 def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
     """Main loop of the program."""
 
     # Initialize vector envs
-    num_envs = 4  # Number of parallel environments
+    num_envs = 5  # Number of parallel environments
     envs = AsyncVectorEnv([make_env() for _ in range(num_envs)])
 
     # Initialize agent
@@ -86,6 +91,8 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
 
         # Evaluate every few episodes
         difficulty, number_of_items, battery_drain_per_step = set_difficulty(episode, phase_len)
+        entropy_coef = get_entropy_coef(episode, phase_len)
+        agent.entropy_coef = entropy_coef
 
         if (episode + 1) % 100 == 0:
             evaluate_agent_training(agent=agent, iters=500, no_gui=False, difficulty=difficulty,
