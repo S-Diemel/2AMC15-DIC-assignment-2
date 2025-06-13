@@ -172,7 +172,7 @@ class Environment(gym.Env):
         # Call reset to finish initializing the environment
         self.reset()
     
-    def reset(self, no_gui=True, seed=None, agent_start_pos=False, difficulty=None, extra_obstacles=None, number_of_items=None, battery_drain_per_step=None, options=None):
+    def reset(self, no_gui=True, seed=None, agent_start_pos=False, difficulty=None, extra_obstacles=None, number_of_items=None, battery_drain_per_step=None, options=None, delivery_zones=None):
         """
         Resetting the environment for a new task for the agent. This involves spawning packages/items, delivery points, the agent itself. 
         It also involves initializing some attributes to the environment and the agent, such as: that it is not carrying any items/packages, 
@@ -197,6 +197,8 @@ class Environment(gym.Env):
             # Implicit else: we keep the self.extra_obstacles from the initialization above, which is an empty list for None
         # Combine all obstacles for collision detection 
         self.all_obstacles = self.racks + self.extra_obstacles
+        if delivery_zones is not None:
+            self.delivery_zones = delivery_zones
         if difficulty is not None:
             self.difficulty = difficulty
         if number_of_items is not None:
@@ -208,12 +210,14 @@ class Environment(gym.Env):
         self.item_starts = sample_points_in_rectangles(
             self.item_spawn, self.number_of_items, self.item_radius, self.all_obstacles)  # spawn/initialize packages/items
         self.delivery_points = sample_points_in_rectangles(
-            self.delivery_zones, self.number_of_items, self.delivery_radius, self.all_obstacles, self.difficulty_region)  # choose delivery spots
+            self.delivery_zones, self.number_of_items, self.delivery_radius, self.all_obstacles, self.difficulty_region)
+
         if not agent_start_pos:  # randomly sample agent position if none is supplied.
             self.agent_pos = np.array(sample_one_point_outside(
                 self.all_obstacles, self.agent_radius, (0, 0, self.width, self.height), self.difficulty_region))
         else:
             self.agent_pos = np.array(agent_start_pos)  # Use given starting position
+
         self.vision_triangle = calc_vision_triangle(self.agent_pos, self.orientation, self.max_range, self.agent_radius)
         self.items = [np.array(pos, dtype=np.float32) for pos in self.item_starts] 
         self.delivered = [False] * len(self.items)
@@ -253,7 +257,7 @@ class Environment(gym.Env):
         if env_stochasticity and not collided:  # if not collided, new_pos and correct_new_pos are the same --> intuition slippery-ness only has effect when no collisions happen
             old_pos_extra = self.agent_pos.copy()
             # Repeat same code as above
-            self.orientation, new_pos = calc_new_position(action, self.speed, self.orientation, self.agent_angle, self.agent_pos, self.step_size)
+            self.orientation, new_pos, self.speed = calc_new_position(action, self.speed, self.orientation, self.agent_angle, self.agent_pos, self.step_size)
             self.agent_pos, collided = calc_collision(old_pos_extra, new_pos, self.agent_radius, self.width, self.height, self.all_obstacles)      
 
         # if collided set speed to 0

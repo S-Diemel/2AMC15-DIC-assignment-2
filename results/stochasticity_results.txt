@@ -16,3 +16,244 @@ Difficulty	SuccessRate	AvgSteps
 3		0.10		920.60
 4		0.40		744.20
 5		0.00		1000.00
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps
+0.0		0.40		680.90
+0.1		0.50		664.70
+0.3		0.50		664.60
+0.5		0.50		704.70
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps
+0		0.90		320.00
+1		0.70		481.00
+2		0.70		575.70
+3		0.40		689.30
+4		0.20		884.40
+5		0.50		616.50
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps
+0.0		0.40		680.90
+0.1		0.50		664.70
+0.3		0.50		664.60
+0.5		0.50		704.70
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps
+0		0.90		320.00
+1		0.70		481.00
+2		0.70		575.70
+3		0.40		689.30
+4		0.20		884.40
+5		0.50		616.50
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps
+0.0		0.40		680.90
+0.1		0.50		664.70
+0.3		0.50		664.60
+0.5		0.50		704.70
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps
+0		0.90		320.00
+1		0.70		481.00
+2		0.70		575.70
+3		0.40		689.30
+4		0.20		884.40
+5		0.50		616.50
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps
+0.0		0.40		680.90
+0.1		0.50		664.70
+0.3		0.50		664.60
+0.5		0.50		704.70
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps
+0		0.90		320.00
+1		0.70		481.00
+2		0.70		575.70
+3		0.40		689.30
+4		0.20		884.40
+5		0.50		616.50
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps
+0.0		0.40		680.90
+0.1		0.50		664.70
+0.3		0.50		664.60
+0.5		0.50		704.70
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps
+0		0.90		320.00
+1		0.70		481.00
+2		0.70		575.70
+3		0.40		689.30
+4		0.20		884.40
+5		0.50		616.50
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps
+0.0		0.40		680.90
+0.1		0.50		664.70
+0.3		0.50		664.60
+0.5		0.50		704.70
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps
+0		0.90		320.00
+1		0.70		481.00
+2		0.70		575.70
+3		0.40		689.30
+4		0.20		884.40
+5		0.50		616.50
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps
+0.0		0.40		680.90
+0.1		0.50		664.70
+0.3		0.50		664.60
+0.5		0.50		704.70
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps
+0		0.90		320.00
+1		0.70		481.00
+2		0.70		575.70
+3		0.40		689.30
+4		0.20		884.40
+5		0.50		616.50
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps
+0.0		0.40		680.90
+0.1		0.50		664.70
+0.3		0.50		664.60
+0.5		0.50		704.70
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps
+0		0.90		320.00
+1		0.70		481.00
+2		0.70		575.70
+3		0.40		689.30
+4		0.20		884.40
+5		0.50		616.50
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps
+0.0		0.40		680.90
+0.1		0.50		664.70
+0.3		0.50		664.60
+0.5		0.50		704.70
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps
+0		0.90		320.00
+1		0.70		481.00
+2		0.70		575.70
+3		0.40		689.30
+4		0.20		884.40
+5		0.50		616.50
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps
+0.0		0.40		680.90
+0.1		0.50		664.70
+0.3		0.50		664.60
+0.5		0.50		704.70
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps
+0		0.90		320.00
+1		0.70		481.00
+2		0.70		575.70
+3		0.40		689.30
+4		0.20		884.40
+5		0.50		616.50
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps
+0.0		0.40		680.90
+0.1		0.50		664.70
+0.3		0.50		664.60
+0.5		0.50		704.70
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps
+0		0.90		320.00
+1		0.70		481.00
+2		0.70		575.70
+3		0.40		689.30
+4		0.20		884.40
+5		0.50		616.50
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps
+0.0		0.40		680.90
+0.1		0.50		664.70
+0.3		0.50		664.60
+0.5		0.50		704.70
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps
+0		0.90		320.00
+1		0.70		481.00
+2		0.70		575.70
+3		0.40		689.30
+4		0.20		884.40
+5		0.50		616.50
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps
+0.0		0.40		680.90
+0.1		0.50		664.70
+0.3		0.50		664.60
+0.5		0.50		704.70
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps
+0		0.90		320.00
+1		0.70		481.00
+2		0.70		575.70
+3		0.40		689.30
+4		0.20		884.40
+5		0.50		616.50
+
+
+TargetDistance Experiment
+TargetDistance	SuccessRate	AvgSteps
+0		0.70		487.90
+1		0.30		760.60
+2		0.50		588.40

@@ -8,14 +8,21 @@ from world.environment import Environment
 from tqdm import trange
 import numpy as np
 import argparse
+from world.utils.env_init import (
+    create_delivery_zones,
+)
 
 RESULTS_DIR = Path("results")
 RESULTS_DIR.mkdir(exist_ok=True)
 RESULTS_TXT = RESULTS_DIR / "stochasticity_results.txt"
 
 
-def run_episode(env, agent, max_steps=1000):
-    state, _ = env.reset()
+def run_episode(env, agent, name_exp, delivery_zones=None, max_steps=1000):
+    if name_exp != "target_distance":
+        state, _ = env.reset()
+    else:
+        state, _ = env.reset(delivery_zones=delivery_zones)
+    
     total_reward = 0
     steps = 0
     for _ in range(max_steps):
@@ -36,7 +43,7 @@ def experiment_stochasticity(agent, levels=(0.0, 0.1, 0.3, 0.5)):
         steps_record = []
         for _ in range(10):
             env = Environment(sigma=sigma)
-            success, steps = run_episode(env, agent)
+            success, steps = run_episode(env, agent, "stochasticity")
             if success:
                 successes += 1
             steps_record.append(steps)
@@ -59,7 +66,7 @@ def experiment_difficulty(agent):
         for _ in range(10):
             env = Environment(extra_obstacles=extra_obstacles)
             env.reset(extra_obstacles=extra_obstacles)
-            success, steps = run_episode(env, agent)
+            success, steps = run_episode(env, agent, "difficulty")
             if success:
                 successes += 1
             steps_record.append(steps)
@@ -75,18 +82,21 @@ def experiment_target_distance(agent):
     success_rates = []
     avg_steps = []
     for i in levels:
-        margin = 2 + i * 1.5
+        '''
+        margin = 10 + i * 0.5
         delivery_zones = [
             (15 - margin, 1, 16 - margin, 2),
             (15 + margin, 8, 16 + margin, 9)
         ]
+        '''
+        env = Environment()
+        delivery_zones = create_delivery_zones(env.racks, env.width, env.height, margin=0.5 + i * 0.2)
         successes = 0
         steps_record = []
         for _ in range(10):
             env = Environment()
-            env.delivery_zones = delivery_zones
-            env.reset()
-            success, steps = run_episode(env, agent)
+            env.reset(delivery_zones=delivery_zones)
+            success, steps = run_episode(env, agent, "target_distance")
             if success:
                 successes += 1
             steps_record.append(steps)
@@ -128,12 +138,14 @@ def append_to_txt(title, x, success_rates, steps):
 
 
 def evaluate(model_path: Path):
-    agent = DQNAgent.load(str(model_path), state_size=11, action_size=6)
+    agent = DQNAgent.load(str(model_path), state_size=15, action_size=6)
     agent.epsilon = 0.0
     experiment_stochasticity(agent)
+    print("Experiment Stochasticity Finished!")
     experiment_difficulty(agent)
+    print("Experiment Difficulty Finished!")
     experiment_target_distance(agent)
-
+    print("Experiment Target Distance Finished!!")
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
