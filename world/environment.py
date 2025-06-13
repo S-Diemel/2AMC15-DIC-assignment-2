@@ -45,7 +45,7 @@ class Environment(gym.Env):
     ):
         super().__init__()
 
-        self.width = 20.0
+        self.width = 15.0
         self.height = 10.0
         self.sigma = sigma 
         # Environment stochasticity interpreted as slippery-ness. The agent's current move is duplicated. 
@@ -72,20 +72,20 @@ class Environment(gym.Env):
             (7, 0, self.width, half_width_of_rack),  # bottom
             (self.width-half_width_of_rack, half_width_of_rack, self.width, self.height-half_width_of_rack),  # right
             # First row of storage racks
-            (5, self.height - 6 * half_width_of_rack, 12, self.height - 4 * half_width_of_rack),
-            (13.5, self.height - 6 * half_width_of_rack, 18, self.height - 4 * half_width_of_rack),
+            (5, self.height - 6 * half_width_of_rack, 11.5, self.height - 4 * half_width_of_rack),
+            (13.5, self.height - 6 * half_width_of_rack, 14.5, self.height - 4 * half_width_of_rack),
             # Second row of storage racks
-            (5, self.height - 11 * half_width_of_rack, 9, self.height - 9 * half_width_of_rack),
-            (10, self.height - 11 * half_width_of_rack, 12, self.height - 9 * half_width_of_rack),
+            (5, self.height - 11 * half_width_of_rack, 8, self.height - 9 * half_width_of_rack),
+            (10, self.height - 11 * half_width_of_rack, 14.5, self.height - 9 * half_width_of_rack),
             # Third row of storage racks
-            (5, self.height - 16 * half_width_of_rack, 18, self.height - 14 * half_width_of_rack),
+            (5, self.height - 16 * half_width_of_rack, 14.5, self.height - 14 * half_width_of_rack),
         ]
         if extra_obstacles is not None: 
             self.extra_obstacles = extra_obstacles  # List of additional obstacles, if any
         else:
             self.extra_obstacles = []
 
-        self.forbidden_zones = [(14, self.height - 12 * half_width_of_rack, 17.5, self.height - 8 * half_width_of_rack)]  # Red Area: forbidden zones, where the agent can but should not go
+        self.forbidden_zones = []  # self.forbidden_zones = [(14, self.height - 12 * half_width_of_rack, 17.5, self.height - 8 * half_width_of_rack)]  # Red Area: forbidden zones, where the agent can but should not go
         self.charger = (3.5, 0, 6, 1)  # Green Area: charging area
         self.charger_center = ((self.charger[0] + self.charger[2]) / 2, (self.charger[1] + self.charger[3]) / 2)
 
