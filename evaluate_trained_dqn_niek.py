@@ -39,6 +39,7 @@ def run_episode(env, agent, name_exp, delivery_zones=None, max_steps=1000):
 def experiment_stochasticity(agent, levels=(0.0, 0.1, 0.3, 0.5)):
     success_rates = []
     avg_steps = []
+    std_steps = []
     for sigma in levels:
         successes = 0
         steps_record = []
@@ -50,7 +51,9 @@ def experiment_stochasticity(agent, levels=(0.0, 0.1, 0.3, 0.5)):
             steps_record.append(steps)
         success_rates.append(successes / 10)
         avg_steps.append(np.mean(steps_record))
-    plot_results(levels, success_rates, avg_steps, "Stochasticity", "stochasticity_plot.png")
+        std_steps.append(np.std(steps_record))
+
+    plot_results(levels, np.array(success_rates), np.array(avg_steps), np.array(std_steps), "Stochasticity", "stochasticity_plot.png")
     append_to_txt("Stochasticity", levels, success_rates, avg_steps)
 
 
@@ -59,6 +62,8 @@ def experiment_difficulty(agent):
     levels = [0, 1, 2, 3, 4, 5]
     success_rates = []
     avg_steps = []
+    std_steps = []
+
     for i in levels:
         # Generate i boxes as extra obstacles to simulate increasing difficulty
         extra_obstacles = [(15 + 0.2 * j, 4 + 0.2 * j, 15.3 + 0.2 * j, 4.3 + 0.2 * j) for j in range(i)]
@@ -73,7 +78,9 @@ def experiment_difficulty(agent):
             steps_record.append(steps)
         success_rates.append(successes / 10)
         avg_steps.append(np.mean(steps_record))
-    plot_results(levels, success_rates, avg_steps, "Difficulty", "difficulty_plot.png")
+        std_steps.append(np.std(steps_record))
+
+    plot_results(levels, np.array(success_rates), np.array(avg_steps), np.array(std_steps), "Difficulty", "difficulty_plot.png")
     append_to_txt("Difficulty", levels, success_rates, avg_steps)
 
 
@@ -82,6 +89,8 @@ def experiment_target_distance(agent):
     levels = [0, 1, 2]
     success_rates = []
     avg_steps = []
+    std_steps = []
+
     for i in levels:
         '''
         margin = 10 + i * 0.5
@@ -93,7 +102,6 @@ def experiment_target_distance(agent):
         env = Environment()
         zones = create_delivery_zones(env.racks, env.width, env.height, margin=0.5 + i * 0.1)
         delivery_zones = random.sample(zones, 3)
-        print(f"level {i}: {delivery_zones}")
         successes = 0
         steps_record = []
         for _ in range(10):
@@ -105,11 +113,13 @@ def experiment_target_distance(agent):
             steps_record.append(steps)
         success_rates.append(successes / 10)
         avg_steps.append(np.mean(steps_record))
-    plot_results(levels, success_rates, avg_steps, "TargetDistance", "target_distance_plot.png")
+        std_steps.append(np.std(steps_record))
+
+    plot_results(levels, np.array(success_rates), np.array(avg_steps), np.array(std_steps), "TargetDistance", "target_distance_plot.png")
     append_to_txt("TargetDistance", levels, success_rates, avg_steps)
 
 
-def plot_results(x_values, success_rates, avg_steps, xlabel, filename):
+def plot_results(x_values, success_rates, avg_steps, std_steps, xlabel, filename):
     plt.figure(figsize=(10, 4))
 
     plt.subplot(1, 2, 1)
@@ -122,6 +132,7 @@ def plot_results(x_values, success_rates, avg_steps, xlabel, filename):
 
     plt.subplot(1, 2, 2)
     plt.plot(x_values, avg_steps, marker="o", color="orange")
+    plt.fill_between(x_values, avg_steps - std_steps, avg_steps + std_steps, alpha=0.5)
     plt.title(f"Average Steps vs. {xlabel}")
     plt.xlabel(xlabel)
     plt.ylabel("Average Steps")
@@ -143,9 +154,9 @@ def append_to_txt(title, x, success_rates, steps):
 def evaluate(model_path: Path):
     agent = DQNAgent.load(str(model_path), state_size=15, action_size=6)
     agent.epsilon = 0.0
-    #experiment_stochasticity(agent)
+    experiment_stochasticity(agent)
     print("Experiment Stochasticity Finished!")
-    #experiment_difficulty(agent)
+    experiment_difficulty(agent)
     print("Experiment Difficulty Finished!")
     experiment_target_distance(agent)
     print("Experiment Target Distance Finished!")
