@@ -32,9 +32,12 @@ import time
 def evaluate(model_path: Path):
     # Load agent
     # NOTE: Must pass the same state_size and action_size used in training
+    # 3, 6
+    #4, 5
+    #3, 8
     agent = DQNAgent.load(str(model_path),
-                          state_size=14,
-                          action_size=6)
+                          state_size=15,
+                          action_size=6, seed=5)
     for i in range(5):
         evaluate_agent_training(agent, 1000, False, 3, 4, 0.25, 0)
 
