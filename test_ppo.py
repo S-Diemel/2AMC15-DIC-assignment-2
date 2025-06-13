@@ -5,10 +5,10 @@ Train your RL Agent in this file.
 from argparse import ArgumentParser
 from gymnasium.vector import AsyncVectorEnv
 from tqdm import trange
-from world.environment_ppo import Environment
+from world.environment import Environment
 from agents.ppo import PPOAgent
 import numpy as np
-from evaluate_trained_dqn import evaluate_agent_training
+from evaluate_trained_ppo import evaluate_agent_training
 import torch
 
 import os
@@ -58,12 +58,12 @@ def set_difficulty(episode, phase_len):
 def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
     """Main loop of the program."""
 
-    agent = PPOAgent(state_size=11, action_size=6, seed=random_seed, num_envs=1)
-    agent.load('best_ppo_agent_1600_100.pth')
+    agent = PPOAgent(state_size=15, action_size=6, seed=random_seed, num_envs=1)
+    agent.load(f"models/best_ppo_yet.pth")
     # Evaluate every few episodes
-    difficulty = 0  # no difficulty, just train on any problem
+    difficulty = 3  # no difficulty, just train on any problem
     number_of_items = 3
-    battery_drain_per_step = 0.0
+    battery_drain_per_step = 0.25
 
     # Set difficulty for curriculum learning
     opts = {"difficulty": difficulty, 'number_of_items': number_of_items,
