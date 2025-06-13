@@ -72,11 +72,11 @@ class Environment(gym.Env):
             (7, 0, self.width, half_width_of_rack),  # bottom
             (self.width-half_width_of_rack, half_width_of_rack, self.width, self.height-half_width_of_rack),  # right
             # First row of storage racks
-            (5, self.height - 6 * half_width_of_rack, 12, self.height - 4 * half_width_of_rack),
+            (5, self.height - 6 * half_width_of_rack, 11.5, self.height - 4 * half_width_of_rack),
             (13.5, self.height - 6 * half_width_of_rack, 18, self.height - 4 * half_width_of_rack),
             # Second row of storage racks
-            (5, self.height - 11 * half_width_of_rack, 9, self.height - 9 * half_width_of_rack),
-            (10, self.height - 11 * half_width_of_rack, 12, self.height - 9 * half_width_of_rack),
+            (5, self.height - 11 * half_width_of_rack, 11.5, self.height - 9 * half_width_of_rack),
+            # (10, self.height - 11 * half_width_of_rack, 12, self.height - 9 * half_width_of_rack),
             # Third row of storage racks
             (5, self.height - 16 * half_width_of_rack, 18, self.height - 14 * half_width_of_rack),
         ]
