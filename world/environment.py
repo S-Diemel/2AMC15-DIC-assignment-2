@@ -28,7 +28,7 @@ from world.utils.env_init import (
     create_delivery_zones,
 )
 from .gui import render_gui
-from .reward_functions import default_reward_function, shaping_reward
+from .reward_functions import default_reward_function, shaping_reward, experiments_reward
 
 
 class Environment(gym.Env):
@@ -284,6 +284,14 @@ class Environment(gym.Env):
                                          self.agent_pos, self.agent_radius, self.forbidden_zones, old_speed)
         reward += shaping_reward(old_pos, old_target, self.agent_pos)
 
+        # If experiments_reward is True, we use the experiments_reward function to compute the reward
+        use_experiments_reward = True  # Set to True to use the experiments_reward function
+        if use_experiments_reward:
+            reward = experiments_reward(
+                pickup, delivered, collided, charged, battery_died, old_pos, self.agent_pos, 
+                self.agent_radius, self.forbidden_zones, old_speed
+            )
+            
         # Bookkeeping for ending an episode
         terminated = all(self.delivered) and self.battery==100 # terminated: relates to success/failure
         truncated = battery_died # Truncated: relates to early stopping

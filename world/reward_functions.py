@@ -77,3 +77,18 @@ def _agent_in_forbidden_zone(agent_pos, agent_radius, forbidden_zones):
         if (x + r > xmin and x - r < xmax and y + r > ymin and y - r < ymax):
             in_forbidden_zone = True
     return in_forbidden_zone  # If not in a forbidden zone then return false
+
+
+def experiments_reward(pickup, delivered, collided, charged, battery_died, old_pos, agent_pos, agent_radius, forbidden_zones, old_speed):
+    """Custom reward function for experiments, can be used to test different reward structures."""
+    reward = 0
+    # if delivered:
+    #     reward += 100  # Big reward for successful delivery
+    # if pickup:
+    #     reward += 0   # Small reward for picking up an item
+    if collided:
+        reward -= 1    # Penalty for collision
+    # if battery_died:
+    #     reward -= 50   # Big penalty for running out of battery
+    # Add more custom logic as needed
+    return reward
