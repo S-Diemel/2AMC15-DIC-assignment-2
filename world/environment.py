@@ -103,7 +103,7 @@ class Environment(gym.Env):
         # Both items and delivery points are linked by index, so item 0 is delivered at delivery point 0, etc.
 
         # Initialize some Gym environment paramters: Necessary for Gym-compatible trainers
-        self.action_space = spaces.Discrete(6)
+        self.action_space = spaces.Discrete(5)
         # Give the range of values that the agents state space can take for each feature
         low = np.array([
             0.0,   # x / width
@@ -125,7 +125,7 @@ class Environment(gym.Env):
             0.0,    # battery / 100
             0.0, #triangle_vision
             #-1.0, # angle item in vision
-            0.0, # binary can interact with something
+            #0.0, # binary can interact with something
             #0.0, # area code
             0.0, # speed
         ], dtype=np.float32)
@@ -150,7 +150,7 @@ class Environment(gym.Env):
             1.0,   # battery / 100
             1.0, # triangle vision
             #1.0, # angle item in vision
-            1.0, # binary can interact with something
+            #1.0, # binary can interact with something
             #9.0, # area code
             3.0, # speed
         ], dtype=np.float32)
@@ -356,7 +356,7 @@ class Environment(gym.Env):
             self.battery/100.0,
             vision_triangle_sensor,
             #angle_vision/self.agent_angle,
-            can_interact,
+            #can_interact,
             #area_code,
             self.speed,
         ]
