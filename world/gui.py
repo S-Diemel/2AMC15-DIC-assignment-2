@@ -19,8 +19,8 @@ def render_gui(self, mode="human", show_full_legend=True, show_difficulty_region
     ax.set_aspect('equal', adjustable='box')
 
     # Turn of the ticks and number on the axes, because they are not relevant for the GUI
-    ax.set_xticks([])
-    ax.set_yticks([])
+    # ax.set_xticks([])
+    # ax.set_yticks([])
 
     # Give room for a side legend
     fig = ax.get_figure()
@@ -97,15 +97,15 @@ def render_gui(self, mode="human", show_full_legend=True, show_difficulty_region
             ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="green", alpha=0.2))
 
     # vision triangle
-    tri_coords = np.array(self.vision_triangle)   # shape (3, 2)
-    vision_tri = Polygon(
-        tri_coords,
-        closed=True,
-        facecolor="yellow",
-        edgecolor=None,
-        alpha=0.4,       # translucent
-    )
-    ax.add_patch(vision_tri)
+    # tri_coords = np.array(self.vision_triangle)   # shape (3, 2)
+    # vision_tri = Polygon(
+    #     tri_coords,
+    #     closed=True,
+    #     facecolor="yellow",
+    #     edgecolor=None,
+    #     alpha=0.4,       # translucent
+    # )
+    # ax.add_patch(vision_tri)
     # Draw Agent
     if self.carrying > -1:  # Give orange edge to agent when carrying an item
         ax.add_patch(Circle(self.agent_pos, self.agent_radius, facecolor="#00A800", edgecolor="orange", linewidth=2))

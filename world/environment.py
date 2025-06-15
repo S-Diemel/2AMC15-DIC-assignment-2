@@ -29,7 +29,7 @@ from world.utils.env_init import (
 )
 from .gui import render_gui
 from .reward_functions import default_reward_function, shaping_reward
-
+import random
 
 class Environment(gym.Env):
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 60}
@@ -123,7 +123,7 @@ class Environment(gym.Env):
             # 0.0,   # item_fw_right / max_range
             # 0.0,   # item_right / max_range
             0.0,    # battery / 100
-            0.0, #triangle_vision
+            #0.0, #triangle_vision
             #-1.0, # angle item in vision
             #0.0, # binary can interact with something
             #0.0, # area code
@@ -148,11 +148,11 @@ class Environment(gym.Env):
             # 1.0,  # item_fw_right / max_range
             #1.0,  # item_right / max_range
             1.0,   # battery / 100
-            1.0, # triangle vision
+            #1.0, # triangle vision
             #1.0, # angle item in vision
             #1.0, # binary can interact with something
             #9.0, # area code
-            3.0, # speed
+            2.0, # speed
         ], dtype=np.float32)
         # Give possible values of observational space
         self.observation_space = spaces.Box(low, high, dtype=np.float32)
@@ -205,10 +205,38 @@ class Environment(gym.Env):
             self.battery_drain_per_step = battery_drain_per_step
         self.difficulty_region = set_difficulty_of_env(
             self.item_spawn, self.width, self.height, self.difficulty)  # For curriculum learning set the difficulty of the environment
-        self.item_starts = sample_points_in_rectangles(
-            self.item_spawn, self.number_of_items, self.item_radius, self.all_obstacles)  # spawn/initialize packages/items
-        self.delivery_points = sample_points_in_rectangles(
-            self.delivery_zones, self.number_of_items, self.delivery_radius, self.all_obstacles, self.difficulty_region)  # choose delivery spots
+        #self.item_starts = [(0.75, 1), (2.25, 9), (0.75, 5), (2.25, 3), (0.75, 1), (2.25, 5), (0.75, 7), (2.25, 3), (0.75, 9), (2.25, 7),]#sample_points_in_rectangles(self.item_spawn, self.number_of_items, self.item_radius, self.all_obstacles)  # spawn/initialize packages/items
+        #self.delivery_points = [(4.75, 2.5), (4.75, 5), (4.75, 7.5), (6, 9.25), (7, 0.75), (9, 3.25), (10, 6.75), (14.25, 8.75), (13, 0.75), (13, 4.25)]#sample_points_in_rectangles( self.delivery_zones, self.number_of_items, self.delivery_radius, self.all_obstacles, self.difficulty_region)  # choose delivery spots
+        self.item_starts = [(1.5, 2), (1.5, 4),(1.5, 6),(1.5, 8),]#(2.25, 9), (0.75, 5), (2.25, 3), (0.75, 1), (2.25, 5), (0.75, 7), (2.25, 3), (0.75, 9), (2.25, 7),]#sample_points_in_rectangles(self.item_spawn, self.number_of_items, self.item_radius, self.all_obstacles)  # spawn/initialize packages/items
+        self.delivery_points = [(13, 0.75), (9, 3.25), (10, 6.75), (14.25, 8.75)]
+        items_starts_sample = []
+        delivery_points_sample = []
+        index_list = []
+        # if self.difficulty==0:
+        for i_item in random.sample([0, 1, 2, 3], self.number_of_items):
+            items_starts_sample.append(self.item_starts[i_item])
+            delivery_points_sample.append(self.delivery_points[i_item])
+        self.item_starts = items_starts_sample
+        self.delivery_points = delivery_points_sample
+        # elif self.difficulty==1:
+        #     for i_item in random.sample([4, 5, 6], self.number_of_items):
+        #         items_starts_sample.append(self.item_starts[i_item])
+        #         delivery_points_sample.append(self.delivery_points[i_item])
+        #     self.item_starts = items_starts_sample
+        #     self.delivery_points = delivery_points_sample
+        # elif self.difficulty==2:
+        #     for i_item in random.sample([7, 8, 9], self.number_of_items):
+        #         items_starts_sample.append(self.item_starts[i_item])
+        #         delivery_points_sample.append(self.delivery_points[i_item])
+        #     self.item_starts = items_starts_sample
+        #     self.delivery_points = delivery_points_sample
+        # else:
+        #     for i_item in random.sample([0,1,2,3,4,5,6,7,8,9], self.number_of_items):
+        #         items_starts_sample.append(self.item_starts[i_item])
+        #         delivery_points_sample.append(self.delivery_points[i_item])
+        #     self.item_starts = items_starts_sample
+        #     self.delivery_points = delivery_points_sample
+
         if not agent_start_pos:  # randomly sample agent position if none is supplied.
             self.agent_pos = np.array(sample_one_point_outside(
                 self.all_obstacles, self.agent_radius, (0, 0, self.width, self.height), self.difficulty_region))
@@ -325,15 +353,15 @@ class Environment(gym.Env):
         #     self.max_range, self.agent_radius, self.agent_pos, self.item_starts, self.item_radius, self.delivered, self.carrying)
         # item_fw_right = item_sensor((self.orientation+self.agent_angle)%360,
         #     self.max_range, self.agent_radius, self.agent_pos, self.item_starts, self.item_radius, self.delivered, self.carrying)
-        vision_triangle_sensor = calc_vision_triangle_features(self.agent_pos, self.max_range, self.agent_radius, self.item_starts, self.delivered, self.carrying, self.vision_triangle, self.all_obstacles, self.delivery_points, self.orientation)
+        # vision_triangle_sensor = calc_vision_triangle_features(self.agent_pos, self.max_range, self.agent_radius, self.item_starts, self.delivered, self.carrying, self.vision_triangle, self.all_obstacles, self.delivery_points, self.orientation)
         # Binary indicator whether agent is carrying an item
-        can_interact = calc_can_interact(self.agent_pos, self.agent_radius, self.items, self.item_radius, self.delivery_points, self.delivery_radius, self.delivered, self.carrying, self.charger)
+        # can_interact = calc_can_interact(self.agent_pos, self.agent_radius, self.items, self.item_radius, self.delivery_points, self.delivery_radius, self.delivered, self.carrying, self.charger)
         if self.carrying >= 0:
             carrying = 1
         else:
             carrying = 0
         # Distance between agent and target on x and y axis.
-        area_code =  compute_area_code(self.carrying, self.delivery_points, self.item_spawn_center, self.delivery_aisles)
+        # area_code =  compute_area_code(self.carrying, self.delivery_points, self.item_spawn_center, self.delivery_aisles)
 
         # Combining everything into a single feature vector
         feature_vector = [
@@ -354,7 +382,7 @@ class Environment(gym.Env):
             # item_fw_right/self.max_range,
             #item_right/self.max_range,
             self.battery/100.0,
-            vision_triangle_sensor,
+            #vision_triangle_sensor,
             #angle_vision/self.agent_angle,
             #can_interact,
             #area_code,
