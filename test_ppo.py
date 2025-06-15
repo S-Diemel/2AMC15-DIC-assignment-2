@@ -35,35 +35,30 @@ def make_env(difficulty=None):
     return _thunk
 
 def set_difficulty(episode, phase_len):
-    # Set difficulty based on curriculum phase (applies to all envs in batch)
-    if episode < phase_len:
-        difficulty = 0  # easy
-        number_of_items = 1
-        battery_drain_per_step = 0
-    elif episode < 2 * phase_len:
-        difficulty = 0  # medium
-        number_of_items = 3
-        battery_drain_per_step = 0
-    elif episode < 3 * phase_len:
-        difficulty = 0  # medium
-        number_of_items = 3
-        battery_drain_per_step = 0.2
-    else:
-        difficulty = 0  # no difficulty, just train on any problem
-        number_of_items = 3
-        battery_drain_per_step = 0.5
+    phase = episode // phase_len
 
-    return difficulty, number_of_items, battery_drain_per_step
+    if phase == 0:
+        return 0, 1, 0
+    elif phase == 1:
+        return 0, 1, 0.25
+    elif phase == [2, 3]:
+        return 0, 3, 0.25
+    elif phase in [4, 5]:
+        return 1, 3, 0.25
+    elif phase in [6, 7]:
+        return 2, 3, 0.25
+    else:
+        return 3, 3, 0.25
 
 def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
     """Main loop of the program."""
 
     agent = PPOAgent(state_size=15, action_size=6, seed=random_seed, num_envs=1)
-    agent.load(f"models/best_ppo_yet.pth")
+    agent.load(f"models/ppo_after_training_7500.pth")
     # Evaluate every few episodes
-    difficulty = 3  # no difficulty, just train on any problem
-    number_of_items = 3
-    battery_drain_per_step = 0.25
+    total_episodes = 7500
+    phase_len = total_episodes // (10)
+    difficulty, number_of_items, battery_drain_per_step = set_difficulty(total_episodes-1, phase_len)
 
     # Set difficulty for curriculum learning
     opts = {"difficulty": difficulty, 'number_of_items': number_of_items,

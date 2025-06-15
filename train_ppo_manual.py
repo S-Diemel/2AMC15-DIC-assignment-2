@@ -5,10 +5,15 @@ Train your RL Agent in this file.
 from argparse import ArgumentParser
 from gymnasium.vector import AsyncVectorEnv
 from tqdm import trange
-from world.environment import Environment
+from world.environment_ppo import Environment
 from agents.ppo import PPOAgent
 import numpy as np
 from evaluate_trained_ppo import evaluate_agent_training
+from torch.utils.tensorboard import SummaryWriter
+import time
+
+# Simple tensorboard logging
+writer = SummaryWriter(log_dir=f"logs/ppo_training_7.5k")
 
 def parse_args():
     p = ArgumentParser(description="DIC Reinforcement Learning Trainer.")
@@ -29,51 +34,33 @@ def make_env(difficulty=None):
         return Environment(difficulty=difficulty)
     return _thunk
 
-def set_difficulty(episode, phase_len):
-    # Set difficulty based on curriculum phase (applies to all envs in batch)
-    if episode < phase_len:
-        difficulty = 0
-        number_of_items = 1
-        battery_drain_per_step = 0
-    elif episode < 2 * phase_len:
-        difficulty = 0
-        number_of_items = 1
-        battery_drain_per_step = 0.25
-    elif episode < 3 * phase_len:
-        difficulty = 0
-        number_of_items = 3
-        battery_drain_per_step = 0.25
-    elif episode < 4 * phase_len:
-        difficulty = 1
-        number_of_items = 3
-        battery_drain_per_step = 0.25
-    elif episode < 5 * phase_len:
-        difficulty = 1
-        number_of_items = 3
-        battery_drain_per_step = 0.25
-    elif episode < 6 * phase_len:
-        difficulty = 2
-        number_of_items = 3
-        battery_drain_per_step = 0.25
-    elif episode < 7 * phase_len:
-        difficulty = 2
-        number_of_items = 3
-        battery_drain_per_step = 0.25
-    else:
-        difficulty = 3
-        number_of_items = 3
-        battery_drain_per_step = 0.25
+def get_curriculum_settings(episode, phase_len, base_entropy=0.1, min_entropy=0.01):
+    # Start phase, end phase, settings
+    curriculum_phases = [
+        (0, 0, (0, 3, 0.0)),
+        (1, 1, (1, 3, 0.25)),
+        (2, 3, (2, 3, 0.25)),
+        (4, 5, (3, 3, 0.25))
+    ]
 
-    return difficulty, number_of_items, battery_drain_per_step
+    phase = episode // phase_len
+    for start, end, config in curriculum_phases:
+        if start <= phase <= end:
+            group_start_ep = start * phase_len
+            group_end_ep = (end + 1) * phase_len
+            group_progress = (episode - group_start_ep) / (group_end_ep - group_start_ep)
+            decay_factor = 0.1 ** group_progress
+            entropy_coef = max(base_entropy * decay_factor, min_entropy)
+            difficulty, items, battery_drain = config
+            return difficulty, items, battery_drain, entropy_coef
 
-def get_entropy_coef(episode, phase_len, base_entropy=0.05, min_entropy=0.01):
-    # Linearly decay entropy_coef each phase
-    phase = min(episode // phase_len, 7)  # cap at last phase
-    decay_factor = 0.9 ** phase  # exponential decay
-    return max(base_entropy * decay_factor, min_entropy)
+    raise ValueError("Episode phase not covered by curriculum.")
+
 
 def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
     """Main loop of the program."""
+
+    start_time = time.time()
 
     # Initialize vector envs
     num_envs = 5  # Number of parallel environments
@@ -83,18 +70,17 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
     agent = PPOAgent(state_size=15, action_size=6, seed=random_seed, num_envs=num_envs)
 
     # Curriculum schedule: split episodes based on difficulty, lower to higher
-    phase_len = episodes // (8)
+    phase_len = episodes // (6)
 
     for episode in range(episodes):
 
         print(f"Episode batch {episode + 1}/{episodes}")
 
         # Evaluate every few episodes
-        difficulty, number_of_items, battery_drain_per_step = set_difficulty(episode, phase_len)
-        entropy_coef = get_entropy_coef(episode, phase_len)
+        difficulty, number_of_items, battery_drain_per_step, entropy_coef = get_curriculum_settings(episode, phase_len)
         agent.entropy_coef = entropy_coef
 
-        if (episode + 1) % 100 == 0:
+        if (episode + 1) % 100_000 == 0:
             evaluate_agent_training(agent=agent, iters=500, no_gui=False, difficulty=difficulty,
                                     number_of_items=number_of_items, battery_drain_per_step=battery_drain_per_step)
 
@@ -118,6 +104,10 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
 
             # Step all environments
             next_states, rewards, terminated, truncated, infos = envs.step(actions)
+
+            # Add +50 reward bonus for terminated environments
+            termination_bonus = 50
+            rewards += terminated * termination_bonus
 
             # Update agent with batch of experiences
             agent.update(
@@ -144,16 +134,23 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
         # Print average reward across environments
         avg_reward = np.mean(episode_rewards)
         print(f"Average reward across {num_envs} envs: {avg_reward:.2f}")
+        # Log to TensorBoard
+        writer.add_scalar("Reward/AverageEpisodeReward", avg_reward, global_step=episode)
+        # Print number of envs where objective was completed
         print(~terminated_envs)
 
         # Optional: Save model periodically
-        if episode % 100 == 0:
-            agent.save(f"models/best_ppo_yet.pth")
+        if (episode + 1) % 500 == 0:
+            agent.save(f"models/ppo/ppo_{episode + 1}.pth")
 
 
-    model_path = f"models/best_ppo_yet.pth"
+    model_path = f"models/ppo_after_training_{episodes}_v2.pth"
     agent.save(model_path)
     print(f"Saved trained model to -> {model_path}")
+
+    end_time = time.time()
+    print(f"Took {end_time - start_time:.2f} seconds")
+    writer.close()
 
 if __name__ == '__main__':
     args = parse_args()

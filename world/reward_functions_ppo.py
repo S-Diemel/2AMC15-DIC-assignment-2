@@ -17,7 +17,7 @@ def charging_reward(battery_level, max_reward, battery_level_max_reward=15, min_
         return max_reward * (np.exp(exp_factor * x) - 1) / (np.exp(exp_factor) - 1)
 
 
-def default_reward_function(pickup, delivered, collided, charged_battery_level, battery_died, old_pos, agent_pos, agent_radius, forbidden_zones, old_speed):
+def default_reward_function(pickup, delivered, collided, charged_battery_level, battery_died, old_pos, agent_pos, agent_radius, forbidden_zones, old_speed, difficulty):
     """
     Reward function for the agent. It has the following rewards:
     - negative reward in general for taking a step (we want to obtain an optimal route and thus have a minimal number of steps)
@@ -29,7 +29,7 @@ def default_reward_function(pickup, delivered, collided, charged_battery_level, 
     - negative reward for being in forbidden places (the agent should just not be in certain areas, altough it can physically move there)
     - the potential based reward shaping is applied outside this function and provides a reward for moving closer to the target
     """
-    reward = -0.05
+    reward = -0.025
     if np.array_equal(old_pos, agent_pos):  # Punish agent for staying in the same position
         reward -= 0.1
     if charged_battery_level is not None:  # charging when below certain battery value
@@ -37,11 +37,14 @@ def default_reward_function(pickup, delivered, collided, charged_battery_level, 
     if battery_died:
         reward -= 20
     if pickup:  # picking up an item
-        reward += 5
+        reward += 15
     if delivered:  # delivering an item
-        reward += 10
+        reward += 25
     if collided: # colliding with a wall or object
-        collision_penalty = 2
+        if difficulty:
+            collision_penalty = 0.1
+        else:
+            collision_penalty = 2.5
         if old_speed > 0:
             reward -= collision_penalty*old_speed
         else:

@@ -277,7 +277,7 @@ class Environment(gym.Env):
 
         # Compute the reward for this step
         reward = default_reward_function(pickup, delivered, collided, charged, battery_died, old_pos,
-                                         self.agent_pos, self.agent_radius, self.forbidden_zones, old_speed)
+                                         self.agent_pos, self.agent_radius, self.forbidden_zones, old_speed, self.difficulty)
         reward += shaping_reward(old_pos, old_target, self.agent_pos)
 
         # Bookkeeping for ending an episode

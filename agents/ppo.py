@@ -83,7 +83,7 @@ class PPOAgent(BaseAgent):
         entropy_coef=0.01,
         ppo_epochs=4,
         batch_size=64,
-        rollout_steps=2048,
+        rollout_steps=1024,
         num_envs=4
     ):
         super().__init__()
