@@ -36,16 +36,16 @@ def evaluate(model_path: Path):
     #4, 5
     #3, 8
     agent = DQNAgent.load(str(model_path),
-                          state_size=12,
+                          state_size=11,
                           action_size=5, seed=6)
     for i in range(5):
-        evaluate_agent_training(agent, 1000, False, 3, 4, 0.25, 0)
+        evaluate_agent_training(agent, 1000, False, 3, 1, 0.25, 0)
 
 
 def evaluate_agent_training(agent, iters, no_gui, difficulty, number_of_items, battery_drain_per_step, epsilon):
     next_state = 0
     env = Environment()
-    state, _ = env.reset(no_gui=no_gui, difficulty=difficulty, number_of_items=number_of_items, battery_drain_per_step=battery_drain_per_step, agent_start_pos=(2,2))
+    state, _ = env.reset(no_gui=no_gui, difficulty=difficulty, number_of_items=number_of_items, battery_drain_per_step=battery_drain_per_step)
     agent.epsilon=epsilon
     for i in trange(iters):
         # env.render()
