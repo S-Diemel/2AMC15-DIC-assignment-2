@@ -1947,3 +1947,103 @@ TargetDistance	SuccessRate	AvgSteps	AvgReward
 0		0.54		211.67		-0.85
 1		0.42		226.57		-1.33
 2		0.40		211.05		-0.90
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps	AvgReward
+0.01		0.48		250.38		-3.00
+0.2		0.42		249.76		-8.29
+0.4		0.46		249.87		-11.13
+0.6		0.34		212.12		-14.76
+0.8		0.38		223.68		-21.53
+0.99		0.16		237.50		-21.88
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps	AvgReward
+0		0.54		212.96		-2.63
+1		0.54		218.93		-2.78
+2		0.54		213.67		-3.59
+3		0.46		227.91		-2.00
+4		0.56		224.14		-2.75
+5		0.58		235.07		-3.48
+
+
+TargetDistance Experiment
+TargetDistance	SuccessRate	AvgSteps	AvgReward
+2		0.40		106.60		-6.60
+4		0.42		90.43		9.57
+6		0.22		59.55		40.45
+8		0.48		76.62		23.38
+10		0.40		64.90		35.10
+12		0.32		84.44		15.56
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps	AvgReward
+0.01		0.48		250.38		-3.00
+0.2		0.42		249.76		-8.29
+0.4		0.46		249.87		-11.13
+0.6		0.34		212.12		-14.76
+0.8		0.38		223.68		-21.53
+0.99		0.16		237.50		-21.88
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps	AvgReward
+0		0.56		242.11		-4.18
+1		0.34		238.65		-2.41
+2		0.44		239.14		-3.59
+3		0.40		205.30		-4.85
+4		0.46		221.70		-6.65
+5		0.16		195.62		-3.62
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps	AvgReward
+0.01		0.48		250.38		-3.00
+0.2		0.42		249.76		-8.29
+0.4		0.46		249.87		-11.13
+0.6		0.34		212.12		-14.76
+0.8		0.38		223.68		-21.53
+0.99		0.16		237.50		-21.88
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps	AvgReward
+0		0.56		242.11		-4.18
+1		0.34		238.65		-2.41
+2		0.44		239.14		-3.59
+3		0.40		205.30		-4.85
+4		0.46		221.70		-6.65
+5		0.16		195.62		-3.62
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps	AvgReward
+0.01		0.48		250.38		-3.00
+0.2		0.42		249.76		-8.29
+0.4		0.46		249.87		-11.13
+0.6		0.34		212.12		-14.76
+0.8		0.38		223.68		-21.53
+0.99		0.16		237.50		-21.88
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps	AvgReward
+0		0.56		242.11		-4.18
+1		0.34		238.65		-2.41
+2		0.44		239.14		-3.59
+3		0.40		205.30		-4.85
+4		0.46		221.70		-6.65
+5		0.16		195.62		-3.62
+
+
+TargetDistance Experiment
+TargetDistance	SuccessRate	AvgSteps	AvgReward
+2		0.32		260.26		-228.26
+4		0.34		261.58		-227.58
+6		0.38		249.04		-211.04
+8		0.30		271.02		-241.02
+10		0.46		224.66		-178.66
+12		0.28		273.64		-245.64
