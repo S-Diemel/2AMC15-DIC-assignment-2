@@ -40,7 +40,8 @@ def get_curriculum_settings(episode, phase_len, base_entropy=0.1, min_entropy=0.
         (0, 0, (0, 3, 0.0)),
         (1, 1, (1, 3, 0.25)),
         (2, 3, (2, 3, 0.25)),
-        (4, 5, (3, 3, 0.25))
+        (4, 5, (3, 3, 0.25)),
+        (6, 6, (3, 3, 0.25))
     ]
 
     phase = episode // phase_len
@@ -68,6 +69,7 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
 
     # Initialize agent
     agent = PPOAgent(state_size=15, action_size=6, seed=random_seed, num_envs=num_envs)
+    agent.load(f"models/ppo/ppo_9500.pth")
 
     # Curriculum schedule: split episodes based on difficulty, lower to higher
     phase_len = episodes // (6)
@@ -80,9 +82,9 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
         difficulty, number_of_items, battery_drain_per_step, entropy_coef = get_curriculum_settings(episode, phase_len)
         agent.entropy_coef = entropy_coef
 
-        if (episode + 1) % 100_000 == 0:
-            evaluate_agent_training(agent=agent, iters=500, no_gui=False, difficulty=difficulty,
-                                    number_of_items=number_of_items, battery_drain_per_step=battery_drain_per_step)
+        # if (episode + 1) % 100_000 == 0:
+        #     evaluate_agent_training(agent=agent, iters=500, no_gui=False, difficulty=difficulty,
+        #                             number_of_items=number_of_items, battery_drain_per_step=battery_drain_per_step)
 
         # Set difficulty for curriculum learning
         opts = {"difficulty": difficulty, 'number_of_items': number_of_items,

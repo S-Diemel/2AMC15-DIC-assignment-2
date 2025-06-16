@@ -1,6 +1,6 @@
 import torch
 from pathlib import Path
-from world.environment import Environment
+from world.environment_ppo import Environment
 from agents.dqn import DQNAgent
 from tqdm import trange
 import time
