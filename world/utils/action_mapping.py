@@ -5,11 +5,10 @@ def action_to_values(action):
     """
     values = {
         0: (1, 0),      # accelerate
-        1: (-1, 0),     # deccelerate
+        1: (-1, 0),     # decelerate
         2: (0, -1),     # left 45
         3: (0, 1),      # right 45
         4: (0, 0),      # do nothing
-        #5: (0, 0)       # interact
     }
     return values[action]
 

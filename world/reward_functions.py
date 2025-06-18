@@ -54,16 +54,12 @@ def default_reward_function(pickup, delivered, collided, charged_battery_level, 
 
 def shaping_reward(old_pos, old_target, agent_pos):
     """Potential based shaping of the reward inspired by (g, Harada, & Russell, 1999)"""
-    gamma = 0.99  # gamma value we use 
-    
-    # Use Manhatten distance when you do no allow diagonal moves:
-    # old_distance_to_target = -(abs(old_pos[0]-old_target[0]) + abs(old_pos[1]-old_target[1])) # negative manhattan distance
-    # new_distance_to_target = -(abs(self.agent_pos[0]-old_target[0]) + abs(self.agent_pos[1]-old_target[1]))  # negative manhattan distance
-    
+    gamma = 0.99  # gamma value we use
+
     # Use Chebyshev distance when you do allow diagonal moves which are equivalent in number of steps as a 'straight' move:
     old_distance_to_target = -max(abs(old_pos[0] - old_target[0]), abs(old_pos[1] - old_target[1]))
     new_distance_to_target = -max(abs(agent_pos[0] - old_target[0]), abs(agent_pos[1] - old_target[1]))
-
+    
     shaping_reward = gamma*new_distance_to_target - old_distance_to_target
     return shaping_reward
 

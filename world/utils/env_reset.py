@@ -108,9 +108,9 @@ def set_difficulty_of_env(item_spawn, width, height, difficulty=None):
                              height) if difficulty is not None else None
         return difficulty_region
 
-def calc_vision_triangle(agent_pos, orientation, max_range, agent_radius):
-    max_range=np.sqrt(2)
+def calc_vision_triangle(agent_pos, orientation, agent_radius):
     """Calc the corners of the vision triangle"""
+    max_range=np.sqrt(2)
     left_side_triangle = (orientation-45)%360
     right_side_triangle = (orientation+45)%360
     left_direction = np.array(orientation_to_directions(left_side_triangle))

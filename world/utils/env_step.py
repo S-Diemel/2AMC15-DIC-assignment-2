@@ -3,10 +3,12 @@ from .action_mapping import action_to_values, orientation_to_directions
 
 
 def calc_new_position(action, speed, orientation, agent_angle, agent_pos, step_size):
-    """Calculate the new position and orientation of the agent within the environment."""
+    """Calculate the new position, speed and orientation of the agent within the environment."""
+
     speed_change, sign_orientation = action_to_values(action)
     new_speed = speed+speed_change
     new_speed = max(0, min(new_speed, 2))
+
     if new_speed > 0:
         new_orientation = (orientation + sign_orientation*agent_angle) % 360
         direction = orientation_to_directions(new_orientation)
@@ -55,14 +57,14 @@ def calc_collision(old_pos, new_position, agent_radius, width, height, all_obsta
     return new_pos, collided
 
 
-def update_delivery(action, carrying, speed, items, delivered, agent_pos, agent_radius, item_radius, delivery_points, delivery_radius):
+def update_delivery(carrying, items, delivered, agent_pos, agent_radius, item_radius, delivery_points, delivery_radius):
     """
     Update all agent attribute regarding the delivery. Whether the agent is carrying an item, and whether each item is delivered. 
     Furthermore, for a step it saves whether an item was picked up or delivered, which is important for computing the reward.
     """
     item_delivered = False
     item_picked_up=False
-    if carrying == -1: #and action == 5  and speed == 0:
+    if carrying == -1:
         # If we are performing the pickup action, we are not yet carrying any item and we are standing still we can pick up an item.
         for i, (pos, delivered_status) in enumerate(zip(items, delivered)):  
             # Iterate over all items that can be picked up, and make sure we have info on whether these items have been delivered yet.
@@ -76,7 +78,7 @@ def update_delivery(action, carrying, speed, items, delivered, agent_pos, agent_
         items[carrying] = agent_pos.copy()
 
     # If we are carrying an item, we do pickup/dropoff action and we are standing still
-    if carrying != -1: # and action == 5 and speed == 0:
+    if carrying != -1:
         for i, point in enumerate(delivery_points):  
             if carrying == i and np.linalg.norm(agent_pos - point) < agent_radius + delivery_radius:
                 # Check if item that is being carried and its delivery point correspond
