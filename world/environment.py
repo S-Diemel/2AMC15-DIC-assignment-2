@@ -45,7 +45,7 @@ class Environment(gym.Env):
     ):
         super().__init__()
 
-        self.width = 20.0
+        self.width = 15.0
         self.height = 10.0
         self.sigma = sigma 
         # Environment stochasticity interpreted as slippery-ness. The agent's current move is duplicated. 
@@ -72,20 +72,18 @@ class Environment(gym.Env):
             (7, 0, self.width, half_width_of_rack),  # bottom
             (self.width-half_width_of_rack, half_width_of_rack, self.width, self.height-half_width_of_rack),  # right
             # First row of storage racks
-            (5, self.height - 6 * half_width_of_rack, 11.5, self.height - 4 * half_width_of_rack),
-            (13.5, self.height - 6 * half_width_of_rack, 18, self.height - 4 * half_width_of_rack),
+            (5, self.height - 6 * half_width_of_rack, 13, self.height - 4 * half_width_of_rack),
             # Second row of storage racks
-            (5, self.height - 11 * half_width_of_rack, 11.5, self.height - 9 * half_width_of_rack),
-            # (10, self.height - 11 * half_width_of_rack, 12, self.height - 9 * half_width_of_rack),
+            (5, self.height - 11 * half_width_of_rack, 13, self.height - 9 * half_width_of_rack),
             # Third row of storage racks
-            (5, self.height - 16 * half_width_of_rack, 18, self.height - 14 * half_width_of_rack),
+            (5, self.height - 16 * half_width_of_rack, 13, self.height - 14 * half_width_of_rack),
         ]
         if extra_obstacles is not None: 
             self.extra_obstacles = extra_obstacles  # List of additional obstacles, if any
         else:
             self.extra_obstacles = []
 
-        self.forbidden_zones = [(14, self.height - 12 * half_width_of_rack, 17.5, self.height - 8 * half_width_of_rack)]  # Red Area: forbidden zones, where the agent can but should not go
+        self.forbidden_zones = []  # self.forbidden_zones = [(14, self.height - 12 * half_width_of_rack, 17.5, self.height - 8 * half_width_of_rack)]  # Red Area: forbidden zones, where the agent can but should not go
         self.charger = (3.5, 0, 6, 1)  # Green Area: charging area
         self.charger_center = ((self.charger[0] + self.charger[2]) / 2, (self.charger[1] + self.charger[3]) / 2)
 
@@ -103,7 +101,7 @@ class Environment(gym.Env):
         # Both items and delivery points are linked by index, so item 0 is delivered at delivery point 0, etc.
 
         # Initialize some Gym environment paramters: Necessary for Gym-compatible trainers
-        self.action_space = spaces.Discrete(6)
+        self.action_space = spaces.Discrete(5)
         # Give the range of values that the agents state space can take for each feature
         low = np.array([
             0.0,   # x / width
@@ -124,9 +122,9 @@ class Environment(gym.Env):
             # 0.0,   # item_right / max_range
             0.0,    # battery / 100
             0.0, #triangle_vision
-            -1.0, # angle item in vision
-            0.0, # binary can interact with something
-            0.0, # area code
+            #-1.0, # angle item in vision
+            #0.0, # binary can interact with something
+            #0.0, # area code
             0.0, # speed
         ], dtype=np.float32)
 
@@ -149,9 +147,9 @@ class Environment(gym.Env):
             #1.0,  # item_right / max_range
             1.0,   # battery / 100
             1.0, # triangle vision
-            1.0, # angle item in vision
-            1.0, # binary can interact with something
-            9.0, # area code
+            #1.0, # angle item in vision
+            #1.0, # binary can interact with something
+            #9.0, # area code
             3.0, # speed
         ], dtype=np.float32)
         # Give possible values of observational space
@@ -325,7 +323,7 @@ class Environment(gym.Env):
         #     self.max_range, self.agent_radius, self.agent_pos, self.item_starts, self.item_radius, self.delivered, self.carrying)
         # item_fw_right = item_sensor((self.orientation+self.agent_angle)%360,
         #     self.max_range, self.agent_radius, self.agent_pos, self.item_starts, self.item_radius, self.delivered, self.carrying)
-        vision_triangle_sensor, angle_vision = calc_vision_triangle_features(self.agent_pos, self.max_range, self.agent_radius, self.item_starts, self.delivered, self.carrying, self.vision_triangle, self.all_obstacles, self.delivery_points, self.orientation)
+        vision_triangle_sensor = calc_vision_triangle_features(self.agent_pos, self.max_range, self.agent_radius, self.item_starts, self.delivered, self.carrying, self.vision_triangle, self.all_obstacles, self.delivery_points, self.orientation)
         # Binary indicator whether agent is carrying an item
         can_interact = calc_can_interact(self.agent_pos, self.agent_radius, self.items, self.item_radius, self.delivery_points, self.delivery_radius, self.delivered, self.carrying, self.charger)
         if self.carrying >= 0:
@@ -354,10 +352,10 @@ class Environment(gym.Env):
             # item_fw_right/self.max_range,
             #item_right/self.max_range,
             self.battery/100.0,
-            vision_triangle_sensor/self.max_range,
-            angle_vision/self.agent_angle,
-            can_interact,
-            area_code,
+            vision_triangle_sensor,
+            #angle_vision/self.agent_angle,
+            #can_interact,
+            #area_code,
             self.speed,
         ]
         return feature_vector

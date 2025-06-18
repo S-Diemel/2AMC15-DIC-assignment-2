@@ -202,7 +202,7 @@ def calc_vision_triangle_features(agent_pos, max_range, agent_radius, item_start
     calc min distance to item in the vision triangle
     """
     angle = 0
-
+    max_range=np.sqrt(2)
     if carrying==-1:
         valid_items = [pos for i, pos in enumerate(item_starts) if not delivered[i] and carrying != i]
     elif carrying>=0:
@@ -210,7 +210,7 @@ def calc_vision_triangle_features(agent_pos, max_range, agent_radius, item_start
     else:
         valid_items = []
     if not valid_items:
-        return max_range, angle
+        return 0
 
     min_distance=max_range
     for item in valid_items:
@@ -218,8 +218,8 @@ def calc_vision_triangle_features(agent_pos, max_range, agent_radius, item_start
             distance, obstacle_distance, angle = _calc_properties_item(max_range, agent_radius, agent_pos, all_obstacles, item, orientation)
             if distance < obstacle_distance:
                 if distance < min_distance:
-                    min_distance = distance
-    return max(0, min_distance), angle
+                    return 1
+    return 0
 
 def calc_can_interact(agent_pos, agent_radius, items, item_radius, delivery_points, delivery_radius, delivered, carrying, charger):
     for i, (pos, delivered_status) in enumerate(zip(items, delivered)):
