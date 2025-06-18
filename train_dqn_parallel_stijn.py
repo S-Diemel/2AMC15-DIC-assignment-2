@@ -54,23 +54,23 @@ def get_epsilon(episode, phase_len):
     elif episode < 4 * phase_len:
         # Phase 3
         eps_start, eps_end = 0.5, 0.05
-        phase_episode = episode - 2 * phase_len
+        phase_episode = episode - 3 * phase_len
     elif episode < 5 * phase_len:
         # Phase 3
         eps_start, eps_end = 0.3, 0.01
-        phase_episode = episode - 2 * phase_len
+        phase_episode = episode - 4 * phase_len
     elif episode < 6 * phase_len:
         # Phase 3
-        eps_start, eps_end = 0.5, 0.05
-        phase_episode = episode - 2 * phase_len
+        eps_start, eps_end = 0.3, 0.01
+        phase_episode = episode - 5 * phase_len
     elif episode < 7 * phase_len:
         # Phase 3
-        eps_start, eps_end = 0.3, 0.01
-        phase_episode = episode - 2 * phase_len
+        eps_start, eps_end = 0.2, 0.01
+        phase_episode = episode - 6 * phase_len
     else:
         # Phase 4+
-        eps_start, eps_end = 0.2, 0.01
-        phase_episode = episode - 3 * phase_len
+        eps_start, eps_end = 0.1, 0.01
+        phase_episode = episode - 7 * phase_len
 
     # Linear decay within phase
     epsilon = eps_start - ((eps_start - eps_end) / (0.7*phase_len)) * phase_episode
@@ -131,7 +131,7 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int, e
 
         print(f"Episode batch {episode + 1}/{episodes // num_envs} - Epsilon: {epsilon:.4f}")
 
-        if not no_gui and (episode+1) % 100 == 0 and episode != 0:
+        if not no_gui and (episode+1) % 500000 == 0 and episode != 0:
             evaluate_agent_training(agent=agent, iters=500, no_gui=False, difficulty=difficulty, number_of_items= number_of_items, battery_drain_per_step= battery_drain_per_step, epsilon=0.1)
         agent.epsilon=epsilon
         opts = {"difficulty": difficulty, 'number_of_items': number_of_items, 'battery_drain_per_step': battery_drain_per_step}
@@ -165,3 +165,9 @@ if __name__ == '__main__':
     args = parse_args()
     main(args.name, args.no_gui, args.episodes, args.iters, args.random_seed, args.epsilon, 
          args.epsilon_min, args.epsilon_decay_proportion)
+
+
+
+
+
+

@@ -72,13 +72,11 @@ class Environment(gym.Env):
             (7, 0, self.width, half_width_of_rack),  # bottom
             (self.width-half_width_of_rack, half_width_of_rack, self.width, self.height-half_width_of_rack),  # right
             # First row of storage racks
-            (5, self.height - 6 * half_width_of_rack, 11.5, self.height - 4 * half_width_of_rack),
-            (13.5, self.height - 6 * half_width_of_rack, 14.5, self.height - 4 * half_width_of_rack),
+            (5, self.height - 6 * half_width_of_rack, 13, self.height - 4 * half_width_of_rack),
             # Second row of storage racks
-            (5, self.height - 11 * half_width_of_rack, 8, self.height - 9 * half_width_of_rack),
-            (10, self.height - 11 * half_width_of_rack, 14.5, self.height - 9 * half_width_of_rack),
+            (5, self.height - 11 * half_width_of_rack, 13, self.height - 9 * half_width_of_rack),
             # Third row of storage racks
-            (5, self.height - 16 * half_width_of_rack, 14.5, self.height - 14 * half_width_of_rack),
+            (5, self.height - 16 * half_width_of_rack, 13, self.height - 14 * half_width_of_rack),
         ]
         if extra_obstacles is not None: 
             self.extra_obstacles = extra_obstacles  # List of additional obstacles, if any
