@@ -37,8 +37,8 @@ def make_env(difficulty=None):
 def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
     """Main loop of the program."""
 
-    agent = PPOAgent(state_size=15, action_size=6, seed=random_seed, num_envs=1)
-    agent.load(f"models/ppo_after_training_10000_v2.pth")
+    agent = PPOAgent(state_size=12, action_size=5, seed=random_seed, num_envs=1)
+    agent.load(f"models/ppo_after_training_10000_v3.pth")
 
     difficulty, number_of_items, battery_drain_per_step = 1, 3, 0.25
 
