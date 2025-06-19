@@ -21,7 +21,7 @@ RESULTS_TXT = RESULTS_DIR / "stochasticity_results.txt"
 
 # note: change environment to experiment=True to run rewards
 
-def run_episode(env, agent, name_exp, delivery_zones=None, max_steps=350, no_gui=True, agent_start_pos=False):
+def run_episode(env, agent, name_exp, delivery_zones=None, max_steps=1000, no_gui=True, agent_start_pos=False):
     if name_exp != "target_distance":
         state, _ = env.reset(no_gui=no_gui)
     else:
@@ -326,7 +326,7 @@ def evaluate(model_path: Path):
     # agent = PPOAgent(state_size=12, action_size=5, seed=12, num_envs=1)
     # agent.load(f"models/best_ppo_yet.pth")
     # waiting for a ppo.
-    reps = 50
+    reps = 20
     print("Agent Loaded Successfully!")
     experiment_stochasticity(agent, reps=reps)
     print("Experiment Stochasticity Finished!")
