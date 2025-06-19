@@ -232,7 +232,7 @@ class Environment(gym.Env):
         if env_stochasticity and not collided:  # if not collided, new_pos and correct_new_pos are the same --> intuition slippery-ness only has effect when no collisions happen
             old_pos_extra = self.agent_pos.copy()
             # Repeat same code as above
-            self.orientation, new_pos = calc_new_position(action, self.speed, self.orientation, self.agent_angle, self.agent_pos, self.step_size)
+            self.orientation, new_pos, self.speed = calc_new_position(action, self.speed, self.orientation, self.agent_angle, self.agent_pos, self.step_size)
             self.agent_pos, collided = calc_collision(old_pos_extra, new_pos, self.agent_radius, self.width, self.height, self.all_obstacles)      
 
         # if collided set speed to 0

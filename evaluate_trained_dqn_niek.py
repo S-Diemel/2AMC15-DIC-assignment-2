@@ -13,6 +13,7 @@ import random
 from world.utils.env_init import create_delivery_zones
 from world.utils.env_reset import sample_one_point_outside
 import math
+from agents.ppo import PPOAgent
 
 RESULTS_DIR = Path("results")
 RESULTS_DIR.mkdir(exist_ok=True)
@@ -313,8 +314,18 @@ def plot_delivery_zones(zones, env_width, env_height):
 
 
 def evaluate(model_path: Path):
-    agent = DQNAgent.load(str(model_path), state_size=15, action_size=6)
+
+
+
+    print('Loading agent from:', model_path)
+    agent = DQNAgent.load(str(model_path), state_size=12, action_size=5)
     agent.epsilon = 0.0
+
+
+        
+    # agent = PPOAgent(state_size=12, action_size=5, seed=12, num_envs=1)
+    # agent.load(f"models/best_ppo_yet.pth")
+    # waiting for a ppo.
     reps = 50
     print("Agent Loaded Successfully!")
     experiment_stochasticity(agent, reps=reps)

@@ -16,3 +16,93 @@ Difficulty	SuccessRate	AvgSteps
 3		0.10		920.60
 4		0.40		744.20
 5		0.00		1000.00
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps	AvgReward
+0.01		0.00		0.00		0.00
+0.2		0.10		229.00		-77.30
+0.4		0.10		309.00		-119.17
+0.6		0.00		0.00		0.00
+0.8		0.00		0.00		0.00
+0.99		0.00		0.00		0.00
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps	AvgReward
+0		0.00		0.00		0.00
+1		0.00		0.00		0.00
+2		0.00		0.00		0.00
+3		0.00		0.00		0.00
+4		0.00		0.00		0.00
+5		0.00		0.00		0.00
+
+
+TargetDistance Experiment
+TargetDistance	SuccessRate	AvgSteps	AvgReward
+2		0.50		249.50		-199.50
+4		0.30		279.20		-249.20
+6		0.30		278.60		-248.60
+8		0.70		181.30		-111.30
+10		0.30		279.10		-249.10
+12		0.50		221.30		-171.30
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps	AvgReward
+0.01		0.00		0.00		0.00
+0.2		0.07		333.50		-99.90
+0.4		0.07		281.00		-109.11
+0.6		0.10		259.33		-112.45
+0.8		0.03		305.00		-154.24
+0.99		0.03		136.00		-21.80
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps	AvgReward
+0		0.07		300.50		-51.13
+1		0.00		0.00		0.00
+2		0.07		329.00		-52.09
+3		0.00		0.00		0.00
+4		0.00		0.00		0.00
+5		0.00		0.00		0.00
+
+
+TargetDistance Experiment
+TargetDistance	SuccessRate	AvgSteps	AvgReward
+2		0.33		269.07		-235.73
+4		0.47		242.17		-195.50
+6		0.47		241.03		-194.37
+8		0.47		232.83		-186.17
+10		0.27		287.80		-261.13
+12		0.53		226.53		-173.20
+
+
+Stochasticity Experiment
+Stochasticity	SuccessRate	AvgSteps	AvgReward
+0.01		0.02		337.00		-60.54
+0.2		0.14		286.86		-76.95
+0.4		0.06		267.00		-60.54
+0.6		0.06		224.00		-47.83
+0.8		0.08		244.75		-91.66
+0.99		0.02		323.00		-206.20
+
+
+Difficulty Experiment
+Difficulty	SuccessRate	AvgSteps	AvgReward
+0		0.12		273.67		-34.32
+1		0.04		305.00		-72.83
+2		0.04		329.00		-52.09
+3		0.00		0.00		0.00
+4		0.00		0.00		0.00
+5		0.00		0.00		0.00
+
+
+TargetDistance Experiment
+TargetDistance	SuccessRate	AvgSteps	AvgReward
+2		0.30		272.46		-242.46
+4		0.38		257.14		-219.14
+6		0.36		256.32		-220.32
+8		0.32		270.24		-238.24
+10		0.42		252.90		-210.90
+12		0.40		246.80		-206.80
