@@ -141,7 +141,7 @@ class Environment(gym.Env):
         # Call reset to finish initializing the environment
         self.reset()
     
-    def reset(self, no_gui=True, seed=None, agent_start_pos=False, difficulty=None, extra_obstacles=None, number_of_items=None, battery_drain_per_step=None, options=None):
+    def reset(self, no_gui=True, seed=None, agent_start_pos=False, difficulty=None, extra_obstacles=None, number_of_items=None, battery_drain_per_step=None, options=None, difficulty_mode='eval'):
         """
         Resetting the environment for a new task for the agent. This involves spawning packages/items, delivery points, the agent itself. 
         It also involves initializing some attributes to the environment and the agent, such as: that it is not carrying any items/packages, 
@@ -154,6 +154,7 @@ class Environment(gym.Env):
                 self.difficulty=None
             self.number_of_items = options.get("number_of_items", self.number_of_items)
             self.battery_drain_per_step = options.get("battery_drain_per_step", self.battery_drain_per_step)
+            difficulty_mode = options.get("difficulty_mode", difficulty_mode)
 
         if difficulty==3:
             difficulty=None
@@ -178,7 +179,7 @@ class Environment(gym.Env):
             self.battery_drain_per_step = battery_drain_per_step
 
         self.difficulty_region = set_difficulty_of_env(
-            self.item_spawn, self.width, self.height, self.difficulty)  # For curriculum learning set the difficulty of the environment
+            self.item_spawn, self.width, self.height, self.difficulty, difficulty_mode)  # For curriculum learning set the difficulty of the environment
 
         self.item_starts = sample_points_in_rectangles(
             self.item_spawn, self.number_of_items, self.item_radius, self.all_obstacles)  # spawn/initialize packages/items
