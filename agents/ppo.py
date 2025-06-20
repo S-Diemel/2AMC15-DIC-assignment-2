@@ -172,19 +172,35 @@ class PPOAgent(BaseAgent):
         return greedy_action
 
     def compute_gae_and_returns(self, last_values, last_dones):
-        """Compute GAE and returns for all environments in parallel."""
+        """
+        Compute Generalized Advantage Estimation (GAE) and returns for all environments in parallel.
+        
+        Parameters:
+        - last_values: The value estimates of the final state for each environment.
+        - last_dones: A binary indicator (1 or 0) for whether the episode ended in each environment.
+        
+        Returns:
+        - advantages: Advantage estimates for each time step.
+        - returns: Computed returns (advantage + baseline value).
+        """
+        # append last value estimates for each environment at the end of the value array for bootstrap calculation
         values = np.concatenate([self.buffer.values, last_values[np.newaxis, :]], axis=0)
+        # Get the rewards from the buffer
         rewards = self.buffer.rewards
+        # append last done indicators for each environment at the end of the dones array for bootstrap calculation
         dones = np.concatenate([self.buffer.dones, last_dones[np.newaxis, :]], axis=0)
 
+        # Initialize the advantages array with same shape as rewards
         advantages = np.zeros_like(rewards)
-        gae = 0.0
-        for step in reversed(range(self.rollout_steps)):
-            delta = rewards[step] + self.gamma * values[step + 1] * (1 - dones[step]) - values[step]
-            gae = delta + self.gamma * self.gae_lambda * (1 - dones[step]) * gae
-            advantages[step] = gae
+        gae = 0.0  # Initialize GAE value
 
-        returns = advantages + self.buffer.values
+        # Compute GAE
+        for step in reversed(range(self.rollout_steps)):
+            delta = rewards[step] + self.gamma * values[step + 1] * (1 - dones[step]) - values[step]  # Temporal difference error
+            gae = delta + self.gamma * self.gae_lambda * (1 - dones[step]) * gae  # Update the GAE
+            advantages[step] = gae  # Store the computed advantage
+
+        returns = advantages + self.buffer.values  # Advantage plus baseline is the return
         return advantages, returns
 
     def learn(self):
@@ -201,7 +217,7 @@ class PPOAgent(BaseAgent):
         # Compute advantages and returns
         advantages, returns = self.compute_gae_and_returns(last_values, last_dones)
 
-        # Flatten all buffers and normalize advantages
+        # Flatten all buffers
         states = self.buffer.states.reshape(-1, self.state_size)
         actions = self.buffer.actions.flatten()
         old_log_probs = self.buffer.log_probs.flatten()
