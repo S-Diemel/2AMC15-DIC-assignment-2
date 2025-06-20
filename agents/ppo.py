@@ -11,7 +11,7 @@ from agents import BaseAgent
 class ActorCritic(nn.Module):
     """
     Simple Actor Critic Neural Network with 1 hidden layer, 64x64
-    Small network and 1 hidden layer should be enough for our simple gridworld problem
+    Small network and 1 hidden layer should be enough for our simple gridword problem
     """
     def __init__(self, state_size: int, action_size: int):
         super().__init__()
@@ -19,7 +19,7 @@ class ActorCritic(nn.Module):
             nn.Linear(state_size, 128),
             nn.Tanh(),
             nn.Linear(128, 64),
-            nn.Tanh(),
+            nn.Tanh()
         )
         self.actor = nn.Sequential(  # Separate actor head for computing the probability distribution across actions
             nn.Linear(64, action_size),
@@ -57,15 +57,14 @@ class RolloutBuffer:
         self.rewards = np.zeros((rollout_steps, num_envs), dtype=np.float32)
         self.log_probs = np.zeros((rollout_steps, num_envs), dtype=np.float32)
         self.values = np.zeros((rollout_steps, num_envs), dtype=np.float32)
-        self.terminated = np.zeros((rollout_steps, num_envs), dtype=np.bool_)
-        self.truncated = np.zeros((rollout_steps, num_envs), dtype=np.bool_)
+        self.dones = np.zeros((rollout_steps, num_envs), dtype=np.bool_)
 
         # Position pointer --> index in pre-allocated array to write the experience to
         self.pos = 0
         # Indicates when the buffer has collected rollout_steps of data
         self.full = False
 
-    def add(self, state, action, reward, log_prob, value, terminated, truncated):
+    def add(self, state, action, reward, log_prob, value, dones):
         """Store one timestep of data for all environments in parallel."""
         # Write each component into the buffer at current position
         self.states[self.pos] = state
@@ -73,8 +72,7 @@ class RolloutBuffer:
         self.rewards[self.pos] = reward
         self.log_probs[self.pos] = log_prob
         self.values[self.pos] = value
-        self.terminated[self.pos] = terminated
-        self.truncated[self.pos] = truncated
+        self.dones[self.pos] = dones
 
         # Move the pointer by one
         self.pos += 1
@@ -102,7 +100,7 @@ class PPOAgent(BaseAgent):
         entropy_coef=0.01,
         ppo_epochs=4,
         batch_size=64,
-        rollout_steps=4000,
+        rollout_steps=1024,
         num_envs=4
     ):
         super().__init__()
@@ -152,9 +150,6 @@ class PPOAgent(BaseAgent):
         state_tensor = torch.from_numpy(states).float().to(self.device)
         with torch.no_grad():  # Don't maintain the gradients during a take-action, as we are not updating the network now
             probs, values = self.policy_old(state_tensor)  # probability distributions for all environments and state values for all environments
-            # TODO: Check this --> I don't think this is necessary
-            # probs = probs + 1e-8    # Prevent 0 or very near to 0 probabilities
-            # probs = probs / probs.sum(dim=-1, keepdim=True)
             dist = torch.distributions.Categorical(probs)
             actions = dist.sample()  # Sample an action from the probability distribution over the actions
             log_probs = dist.log_prob(actions)  # Return the log probabilities, useful for computing the gradient of the network
@@ -176,20 +171,17 @@ class PPOAgent(BaseAgent):
 
         return greedy_action
 
-    def compute_gae_and_returns(self, last_values, last_terminated, last_truncated):
+    def compute_gae_and_returns(self, last_values, last_dones):
         """Compute GAE and returns for all environments in parallel."""
         values = np.concatenate([self.buffer.values, last_values[np.newaxis, :]], axis=0)
         rewards = self.buffer.rewards
-        terminated = np.concatenate([self.buffer.terminated, last_terminated[np.newaxis, :]], axis=0)
-        truncated = np.concatenate([self.buffer.truncated, last_truncated[np.newaxis, :]], axis=0)
+        dones = np.concatenate([self.buffer.dones, last_dones[np.newaxis, :]], axis=0)
 
         advantages = np.zeros_like(rewards)
-        gae = np.zeros(self.num_envs)
-
+        gae = 0.0
         for step in reversed(range(self.rollout_steps)):
-            not_done = 1.0 - np.logical_or(terminated[step], truncated[step]).astype(np.float32)
-            delta = rewards[step] + self.gamma * values[step + 1] * not_done - values[step]
-            gae = delta + self.gamma * self.gae_lambda * not_done * gae
+            delta = rewards[step] + self.gamma * values[step + 1] * (1 - dones[step]) - values[step]
+            gae = delta + self.gamma * self.gae_lambda * (1 - dones[step]) * gae
             advantages[step] = gae
 
         returns = advantages + self.buffer.values
@@ -204,11 +196,10 @@ class PPOAgent(BaseAgent):
         with torch.no_grad():
             last_states = torch.tensor(self.buffer.states[-1], dtype=torch.float32).to(self.device)
             last_values = self.policy_old(last_states)[1].squeeze(-1).cpu().numpy()
-            last_terminated = self.buffer.terminated[-1].copy()
-            last_truncated = self.buffer.truncated[-1].copy()
+            last_dones = self.buffer.dones[-1].copy()
 
         # Compute advantages and returns
-        advantages, returns = self.compute_gae_and_returns(last_values, last_terminated, last_truncated)
+        advantages, returns = self.compute_gae_and_returns(last_values, last_dones)
 
         # Flatten all buffers and normalize advantages
         states = self.buffer.states.reshape(-1, self.state_size)
@@ -217,8 +208,9 @@ class PPOAgent(BaseAgent):
         returns = returns.flatten()
         advantages = advantages.flatten()
 
-        # Normalize advantages across all environments and timesteps
+        # Normalize advantages and rewards across all environments and timesteps
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        returns = (returns - returns.mean()) / (returns.std() + 1e-8)
 
         # Create DataLoader
         dataset = TensorDataset(
@@ -261,10 +253,10 @@ class PPOAgent(BaseAgent):
         self.policy_old.load_state_dict(self.policy.state_dict())
         self.buffer.clear()
 
-    def update(self, states, actions, rewards, log_probs, values, terminated, truncated):
+    def update(self, states, actions, rewards, log_probs, values, dones):
         """Add batch of experiences from all environments"""
         # For each experience add all necessary information to the rollout buffer
-        self.buffer.add(states, actions, rewards, log_probs, values, terminated, truncated)
+        self.buffer.add(states, actions, rewards, log_probs, values, dones)
 
         if self.buffer.full:  # If the buffer is full we trigger the learning process
             self.learn()

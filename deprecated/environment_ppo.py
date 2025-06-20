@@ -2,6 +2,7 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 from matplotlib import pyplot as plt
+from tqdm import trange
 
 from world.utils.env_reset import (
     sample_points_in_rectangles, 
@@ -16,15 +17,18 @@ from world.utils.env_step import (
     update_battery,
 )
 from world.utils.compute_features import (
-    compute_distance_to_obstacle,
+    compute_distance_to_wall,
+    compute_dist_to_target,
     compute_target,
     calc_vision_triangle_features,
+    calc_can_interact,
+    compute_area_code
 )
 from world.utils.env_init import (
     create_delivery_zones,
 )
 from .gui import render_gui
-from .reward_functions import default_reward_function, shaping_reward
+from .reward_functions_ppo import default_reward_function, shaping_reward
 
 
 class Environment(gym.Env):
@@ -41,14 +45,14 @@ class Environment(gym.Env):
     ):
         super().__init__()
 
-        self.width = 15.0
+        self.width = 20.0
         self.height = 10.0
         self.sigma = sigma 
         # Environment stochasticity interpreted as slippery-ness. The agent's current move is duplicated. 
         # Unless it has a collision with a wall or obstacle, in this case the action is not repeated.
         self.agent_radius = agent_radius
         self.step_size = step_size
-        self.speed = 0
+        self.speed = 0 # TODO: remove speed, no longer used
         self.orientation = 0
         self.agent_angle = 45  # the agents angle step-size
         self.max_range = 5 # Maximum range for sensors
@@ -68,19 +72,20 @@ class Environment(gym.Env):
             (7, 0, self.width, half_width_of_rack),  # bottom
             (self.width-half_width_of_rack, half_width_of_rack, self.width, self.height-half_width_of_rack),  # right
             # First row of storage racks
-            (5, self.height - 6 * half_width_of_rack, 13, self.height - 4 * half_width_of_rack),
+            (5, self.height - 6 * half_width_of_rack, 11.5, self.height - 4 * half_width_of_rack),
+            (13.5, self.height - 6 * half_width_of_rack, 18, self.height - 4 * half_width_of_rack),
             # Second row of storage racks
-            (5, self.height - 11 * half_width_of_rack, 13, self.height - 9 * half_width_of_rack),
+            (5, self.height - 11 * half_width_of_rack, 11.5, self.height - 9 * half_width_of_rack),
+            # (10, self.height - 11 * half_width_of_rack, 12, self.height - 9 * half_width_of_rack),
             # Third row of storage racks
-            (5, self.height - 16 * half_width_of_rack, 13, self.height - 14 * half_width_of_rack),
+            (5, self.height - 16 * half_width_of_rack, 18, self.height - 14 * half_width_of_rack),
         ]
-
         if extra_obstacles is not None: 
             self.extra_obstacles = extra_obstacles  # List of additional obstacles, if any
         else:
             self.extra_obstacles = []
 
-        self.forbidden_zones = []  # self.forbidden_zones = [(14, self.height - 12 * half_width_of_rack, 17.5, self.height - 8 * half_width_of_rack)]  # Red Area: forbidden zones, where the agent can but should not go
+        self.forbidden_zones = [(14, self.height - 12 * half_width_of_rack, 17.5, self.height - 8 * half_width_of_rack)]  # Red Area: forbidden zones, where the agent can but should not go
         self.charger = (3.5, 0, 6, 1)  # Green Area: charging area
         self.charger_center = ((self.charger[0] + self.charger[2]) / 2, (self.charger[1] + self.charger[3]) / 2)
 
@@ -98,20 +103,30 @@ class Environment(gym.Env):
         # Both items and delivery points are linked by index, so item 0 is delivered at delivery point 0, etc.
 
         # Initialize some Gym environment paramters: Necessary for Gym-compatible trainers
-        self.action_space = spaces.Discrete(5)
+        self.action_space = spaces.Discrete(6)
         # Give the range of values that the agents state space can take for each feature
         low = np.array([
             0.0,   # x / width
             0.0,   # y / height
             0.0,   # orientation / 45
             0.0,   # carrying flag
+            # -1.0,  # dist_target_x / width
+            # -1.0,  # dist_target_y / height
             0.0,   # steps_left / max_range
             0.0,   # steps_fw_left / max_range
             0.0,   # steps_fw / max_range
             0.0,   # steps_fw_right / max_range
             0.0,   # steps_right / max_range
+            # 0.0,   # item_left / max_range
+            # 0.0,   # item_fw_left / max_range
+            # 0.0,   # item_fw / max_range
+            # 0.0,   # item_fw_right / max_range
+            # 0.0,   # item_right / max_range
             0.0,    # battery / 100
             0.0, #triangle_vision
+            -1.0, # angle item in vision
+            0.0, # binary can interact with something
+            0.0, # area code
             0.0, # speed
         ], dtype=np.float32)
 
@@ -120,16 +135,25 @@ class Environment(gym.Env):
             1.0,  # y / height
             7.0,  # orientation / 45  (possible values: 0…7)
             1.0,  # carrying flag
+            # 1.0,  # dist_target_x / width
+            # 1.0,  # dist_target_y / height
             1.0,  # steps_left / max_range
             1.0,  # steps_fw_left / max_range
             1.0,  # steps_fw / max_range
             1.0,  # steps_fw_right / max_range
             1.0,  # steps_right / max_range
+            # 1.0,  # item_left / max_range
+            # 1.0,  # item_fw_left / max_range
+            # 1.0,  # item_fw / max_range
+            # 1.0,  # item_fw_right / max_range
+            #1.0,  # item_right / max_range
             1.0,   # battery / 100
             1.0, # triangle vision
-            2.0, # speed
+            1.0, # angle item in vision
+            1.0, # binary can interact with something
+            9.0, # area code
+            3.0, # speed
         ], dtype=np.float32)
-
         # Give possible values of observational space
         self.observation_space = spaces.Box(low, high, dtype=np.float32)
 
@@ -138,28 +162,33 @@ class Environment(gym.Env):
         self.total_nr_collisions = 0
         self.total_nr_steps = 0
 
+        # delivery_aisle:
+        self.delivery_aisles = [(5, 0, 19.5, 2.5),  # bottom
+                                (5, 2.5, 19.5, 5),  # first from bottom
+                                (5, 5, 19.5, 7.5),  # second from bottom
+                                (5, 7.5, 19.5, 10)]  # top aisle
+
+
         # Call reset to finish initializing the environment
         self.reset()
     
-    def reset(self, no_gui=True, seed=None, agent_start_pos=False, difficulty=None, extra_obstacles=None, number_of_items=None, battery_drain_per_step=None, options=None, difficulty_mode='eval'):
+    def reset(self, no_gui=True, seed=None, agent_start_pos=False, difficulty=None, extra_obstacles=None, number_of_items=None, battery_drain_per_step=None, options=None):
         """
         Resetting the environment for a new task for the agent. This involves spawning packages/items, delivery points, the agent itself. 
         It also involves initializing some attributes to the environment and the agent, such as: that it is not carrying any items/packages, 
         it has not delivered any packages yet, it is at full battery, etc. Finally it computes the initial agent state observation vector.
         """
-        # parse options
+        #TODO: number of packeges in reset
+
         if options is not None:
             self.difficulty = options.get("difficulty", self.difficulty)
             if self.difficulty==3:
                 self.difficulty=None
             self.number_of_items = options.get("number_of_items", self.number_of_items)
             self.battery_drain_per_step = options.get("battery_drain_per_step", self.battery_drain_per_step)
-            difficulty_mode = options.get("difficulty_mode", difficulty_mode)
-
         if difficulty==3:
             difficulty=None
             self.difficulty=difficulty
-
         super().reset(seed=seed)
         info = {} # required for Gymnasium (parallel environments), but unused
 
@@ -168,38 +197,29 @@ class Environment(gym.Env):
             # Implicit else: we keep the self.extra_obstacles from the initialization above, which is an empty list for None
         # Combine all obstacles for collision detection 
         self.all_obstacles = self.racks + self.extra_obstacles
-
         if difficulty is not None:
             self.difficulty = difficulty
-
         if number_of_items is not None:
             self.number_of_items = number_of_items
-
         if battery_drain_per_step is not None:
             self.battery_drain_per_step = battery_drain_per_step
-
         self.difficulty_region = set_difficulty_of_env(
-            self.item_spawn, self.width, self.height, self.difficulty, difficulty_mode)  # For curriculum learning set the difficulty of the environment
-
+            self.item_spawn, self.width, self.height, self.difficulty)  # For curriculum learning set the difficulty of the environment
         self.item_starts = sample_points_in_rectangles(
             self.item_spawn, self.number_of_items, self.item_radius, self.all_obstacles)  # spawn/initialize packages/items
-
         self.delivery_points = sample_points_in_rectangles(
             self.delivery_zones, self.number_of_items, self.delivery_radius, self.all_obstacles, self.difficulty_region)  # choose delivery spots
-
         if not agent_start_pos:  # randomly sample agent position if none is supplied.
             self.agent_pos = np.array(sample_one_point_outside(
                 self.all_obstacles, self.agent_radius, (0, 0, self.width, self.height), self.difficulty_region))
         else:
             self.agent_pos = np.array(agent_start_pos)  # Use given starting position
-
-        self.vision_triangle = calc_vision_triangle(self.agent_pos, self.orientation, self.agent_radius)
+        self.vision_triangle = calc_vision_triangle(self.agent_pos, self.orientation, self.max_range, self.agent_radius)
         self.items = [np.array(pos, dtype=np.float32) for pos in self.item_starts] 
         self.delivered = [False] * len(self.items)
         self.carrying = -1  # -1 = not carrying any items; otherwise this is the index of the item that is at that moment carried by the agent.
         self.battery = 100  # initializes battery
         self.no_gui = no_gui
-
         return self._compute_features(), info
     
     
@@ -242,12 +262,11 @@ class Environment(gym.Env):
             self.speed = 0
 
         # Update delivery and battery information
-        self.vision_triangle = calc_vision_triangle(self.agent_pos, self.orientation, self.agent_radius)
-
-        self.carrying, self.item, self.delivered, pickup, delivered = update_delivery(self.carrying, self.items,
-        self.delivered, self.agent_pos, self.agent_radius, self.item_radius, self.delivery_points, self.delivery_radius
+        self.vision_triangle = calc_vision_triangle(self.agent_pos, self.orientation, self.max_range, self.agent_radius)
+        self.carrying, self.item, self.delivered, pickup, delivered = update_delivery(
+            action, self.carrying, self.speed, self.items, self.delivered, self.agent_pos, 
+            self.agent_radius, self.item_radius, self.delivery_points, self.delivery_radius
         )
-
         self.battery, charged = update_battery(self.battery, self.battery_drain_per_step, self.agent_pos, self.charger, 
                                  self.speed, self.battery_value_reward_charging, action)
 
@@ -258,7 +277,7 @@ class Environment(gym.Env):
 
         # Compute the reward for this step
         reward = default_reward_function(pickup, delivered, collided, charged, battery_died, old_pos,
-                                         self.agent_pos, self.agent_radius, self.forbidden_zones, old_speed)
+                                         self.agent_pos, self.agent_radius, self.forbidden_zones, old_speed, self.difficulty)
         reward += shaping_reward(old_pos, old_target, self.agent_pos)
 
         # Bookkeeping for ending an episode
@@ -285,36 +304,60 @@ class Environment(gym.Env):
         x, y = self.agent_pos
 
         # Distance to wall or object at 5 angles from the agent
-        steps_fw = compute_distance_to_obstacle(self.orientation, self.max_range,
+        steps_fw = compute_distance_to_wall(self.orientation, self.max_range, 
             self.agent_radius, self.agent_pos, self.width, self.height, self.all_obstacles)
-        steps_left = compute_distance_to_obstacle((self.orientation-2*self.agent_angle)%360,
+        steps_left = compute_distance_to_wall((self.orientation-2*self.agent_angle)%360,
             self.max_range, self.agent_radius, self.agent_pos, self.width, self.height, self.all_obstacles) # Left 90
-        steps_right = compute_distance_to_obstacle((self.orientation+2*self.agent_angle)%360,
+        steps_right = compute_distance_to_wall((self.orientation+2*self.agent_angle)%360,
             self.max_range, self.agent_radius, self.agent_pos, self.width, self.height, self.all_obstacles)  # Right 90
-        steps_fw_left = compute_distance_to_obstacle((self.orientation-self.agent_angle)%360,
+        steps_fw_left = compute_distance_to_wall((self.orientation-self.agent_angle)%360, 
             self.max_range, self.agent_radius, self.agent_pos, self.width, self.height, self.all_obstacles) # Left 45
-        steps_fw_right = compute_distance_to_obstacle((self.orientation+self.agent_angle)%360,
+        steps_fw_right = compute_distance_to_wall((self.orientation+self.agent_angle)%360, 
             self.max_range, self.agent_radius, self.agent_pos, self.width, self.height, self.all_obstacles)  # Right 45
-
-        vision_triangle_sensor = calc_vision_triangle_features(self.agent_pos, self.agent_radius, self.item_starts, self.delivered, self.carrying, self.vision_triangle, self.all_obstacles, self.delivery_points)
-
+        # Distance to item that can be picked up at 5 angles from the agent
+        # item_fw = item_sensor(self.orientation,
+        #     self.max_range, self.agent_radius, self.agent_pos, self.item_starts, self.item_radius, self.delivered, self.carrying)
+        # item_left = item_sensor((self.orientation-2*self.agent_angle)%360,
+        #     self.max_range, self.agent_radius, self.agent_pos, self.item_starts, self.item_radius, self.delivered, self.carrying)
+        # item_right = item_sensor((self.orientation+2*self.agent_angle)%360,
+        #     self.max_range, self.agent_radius, self.agent_pos, self.item_starts, self.item_radius, self.delivered, self.carrying)
+        # item_fw_left = item_sensor((self.orientation-self.agent_angle)%360,
+        #     self.max_range, self.agent_radius, self.agent_pos, self.item_starts, self.item_radius, self.delivered, self.carrying)
+        # item_fw_right = item_sensor((self.orientation+self.agent_angle)%360,
+        #     self.max_range, self.agent_radius, self.agent_pos, self.item_starts, self.item_radius, self.delivered, self.carrying)
+        vision_triangle_sensor, angle_vision = calc_vision_triangle_features(self.agent_pos, self.max_range, self.agent_radius, self.item_starts, self.delivered, self.carrying, self.vision_triangle, self.all_obstacles, self.delivery_points, self.orientation)
+        # Binary indicator whether agent is carrying an item
+        can_interact = calc_can_interact(self.agent_pos, self.agent_radius, self.items, self.item_radius, self.delivery_points, self.delivery_radius, self.delivered, self.carrying, self.charger)
         if self.carrying >= 0:
             carrying = 1
         else:
             carrying = 0
+        # Distance between agent and target on x and y axis.
+        area_code =  compute_area_code(self.carrying, self.delivery_points, self.item_spawn_center, self.delivery_aisles)
 
+        # Combining everything into a single feature vector
         feature_vector = [
             x/self.width, 
             y/self.height, 
             self.orientation/self.agent_angle,
-            carrying,
+            carrying, 
+            # target_x/self.width,
+            # target_y/self.height,
             steps_left/self.max_range,
             steps_fw_left/self.max_range,
             steps_fw/self.max_range,
             steps_fw_right/self.max_range,
             steps_right/self.max_range,
+            #item_left/self.max_range,
+            # item_fw_left/self.max_range,
+            # item_fw/self.max_range,
+            # item_fw_right/self.max_range,
+            #item_right/self.max_range,
             self.battery/100.0,
-            vision_triangle_sensor,
+            vision_triangle_sensor/self.max_range,
+            angle_vision/self.agent_angle,
+            can_interact,
+            area_code,
             self.speed,
         ]
         return feature_vector
