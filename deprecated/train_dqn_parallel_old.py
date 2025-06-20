@@ -38,31 +38,29 @@ def make_env():
         return Environment()
     return _thunk
 
-def get_curriculum_parameters(episode, total_episodes):
-    # Define phases as (percent, eps_start, eps_end, difficulty, num_items, battery_drain)
+def get_curriculum_parameters(episode, phase_len):
+    # Define curriculum phases
     curriculum = [
-        (1, 0.10, 1.0, 0.1, 0, 1, 0.0),
-        (2, 0.10, 0.5, 0.05, 0, 1, 0.25),
-        (3, 0.20, 0.3, 0.05, 0, 3, 0.25),
-        (4, 0.30, 0.3, 0.05, 1, 3, 0.25),
-        (5, 0.30, 0.3, 0.01, 2, 3, 0.25),
+        # (eps_start, eps_end, difficulty, num_items, battery_drain)
+        (1.0, 0.1, 0, 1, 0.0),
+        (0.5, 0.1, 0, 1, 0.25),
+        (0.5, 0.05, 0, 3, 0.25),
+        (0.5, 0.05, 1, 3, 0.25),
+        (0.3, 0.01, 1, 3, 0.25),
+        (0.3, 0.01, 2, 3, 0.25),
+        (0.2, 0.01, 3, 3, 0.25),
+        (0.1, 0.01, 3, 3, 0.25) # Final fallback phase
     ]
 
-    phase_start = 0
-    for phase_number, percent, eps_start, eps_end, difficulty, number_of_items, battery_drain_per_step in curriculum:
-        phase_len = int(percent * total_episodes)
-        if episode < phase_start + phase_len:
-            phase_episode = episode - phase_start
-            epsilon = eps_start - ((eps_start - eps_end) / (0.7 * phase_len)) * phase_episode
-            epsilon = max(eps_end, epsilon)
-            return phase_number, epsilon, difficulty, number_of_items, battery_drain_per_step
-        phase_start += phase_len
+    phase = min(episode // phase_len, len(curriculum) - 1)
+    eps_start, eps_end, difficulty, number_of_items, battery_drain_per_step = curriculum[phase]
+    phase_episode = episode - phase * phase_len
 
-    # If episode exceeds total_episodes due to rounding, default to last phase settings
-    phase_number, percent, eps_start, eps_end, difficulty, number_of_items, battery_drain_per_step = curriculum[-1]
-    epsilon = eps_end
-    return phase_number, epsilon, difficulty, number_of_items, battery_drain_per_step
+    # Linear epsilon decay within phase
+    epsilon = eps_start - ((eps_start - eps_end) / (0.7 * phase_len)) * phase_episode
+    epsilon = max(eps_end, epsilon)
 
+    return epsilon, difficulty, number_of_items, battery_drain_per_step
 
 def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
     """Main loop of the program."""
@@ -71,14 +69,14 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
     agent = DQNAgent(state_size=12, action_size=5, seed=random_seed)
 
     # Curriculum schedule: split episodes into 4 equal parts
-    total_episodes = episodes // num_envs
+    phase_len = episodes // (8*num_envs)
 
 
     for episode in range(episodes // num_envs):
 
-        phase_number, epsilon, difficulty, number_of_items, battery_drain_per_step = get_curriculum_parameters(episode, total_episodes)
+        epsilon, difficulty, number_of_items, battery_drain_per_step = get_curriculum_parameters(episode, phase_len)
 
-        print(f"Episode batch {episode + 1}/{episodes // num_envs} - Epsilon: {epsilon:.4f} - Phase: {phase_number}")
+        print(f"Episode batch {episode + 1}/{episodes // num_envs} - Epsilon: {epsilon:.4f}")
 
         if not no_gui and (episode+1) % 500000 == 0 and episode != 0:
             evaluate_agent_training(agent=agent, iters=500, no_gui=False, difficulty=difficulty, number_of_items= number_of_items, battery_drain_per_step= battery_drain_per_step, epsilon=0.1)
@@ -107,7 +105,7 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
                 break
 
         print(terminated_flags)
-    model_path = f"models/dqn_{name}.pth"
+    model_path = f"models/dqn_{name}_final.pth"
     agent.save(model_path)
     print(f"Saved trained model to -> {model_path}")
 

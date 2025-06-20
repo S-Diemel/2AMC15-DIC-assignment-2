@@ -5,11 +5,14 @@ from agents.dqn import DQNAgent
 from tqdm import trange
 
 def evaluate(model_path: Path):
+    l =[]
     agent = DQNAgent.load(str(model_path),
                           state_size=12,
-                          action_size=5, seed=5)
-    for i in range(5):
-        evaluate_agent_training(agent, 1000, False, 3, 4, 0.25, 0)
+                          action_size=5, seed=6)
+    for i in range(20):
+        l.append(evaluate_agent_training(agent, 1000, True, 3, 3, 0.25, 0))
+    print(l)
+
 
 
 def evaluate_agent_training(agent, iters, no_gui, difficulty, number_of_items, battery_drain_per_step, epsilon):
@@ -22,8 +25,12 @@ def evaluate_agent_training(agent, iters, no_gui, difficulty, number_of_items, b
         next_state, reward, terminated, truncated, _ = env.step(action)
         env.render()
         state = next_state
-        if terminated or truncated:
-            break
+        if terminated:
+            return True
+        if truncated:
+            return False
+
+    return False
 
 
 if __name__ == "__main__":

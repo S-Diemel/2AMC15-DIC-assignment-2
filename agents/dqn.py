@@ -23,7 +23,7 @@ class QNetwork(nn.Module):
     Initializes a simple Q-network with two hidden layers of 64 neurons each. 
     Lecturer said that it is good to keep it simple, for our simple task.
     """
-    def __init__(self, state_size: int, action_size: int, hidden_dims=(64, 64)):
+    def __init__(self, state_size: int, action_size: int, hidden_dims=(128, 128)):
         super(QNetwork, self).__init__()
         self.model = nn.Sequential(  # Initializing a simple MLP to approximate Q-values
             nn.Linear(state_size, hidden_dims[0]),

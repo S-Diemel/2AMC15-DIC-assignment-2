@@ -91,7 +91,7 @@ def sample_one_point_outside(rectangles, radius, bounding_rect, difficulty_regio
                 return (x_cand, y_cand)
             
 
-def set_difficulty_of_env(item_spawn, width, height, difficulty=None):
+def set_difficulty_of_env(item_spawn, width, height, difficulty=None, mode='eval'):
         """
         For CURRICULUM LEARNING: define invisible easy, medium and hard zones within the environment,
         which divide the warehouse to the right of the package spawn place into 3 evenly sized sections.
@@ -102,10 +102,16 @@ def set_difficulty_of_env(item_spawn, width, height, difficulty=None):
         item_spawn_width = item_spawn[0][2]
         width_difficulty_region = (width - item_spawn_width) / 3
         # Create difficulty region
-        difficulty_region = (item_spawn_width + difficulty * width_difficulty_region, 
-                             0, 
-                             item_spawn_width + (difficulty + 1) * width_difficulty_region, 
-                             height) if difficulty is not None else None
+        if mode == 'eval':
+            difficulty_region = (item_spawn_width + difficulty * width_difficulty_region,
+                                 0,
+                                 item_spawn_width + (difficulty + 1) * width_difficulty_region,
+                                 height) if difficulty is not None else None
+        else:
+            difficulty_region = (item_spawn_width,
+                                 0,
+                                 item_spawn_width + (difficulty + 1) * width_difficulty_region,
+                                 height) if difficulty is not None else None
         return difficulty_region
 
 def calc_vision_triangle(agent_pos, orientation, agent_radius):
