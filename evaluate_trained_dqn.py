@@ -10,16 +10,16 @@ def evaluate(model_path: Path):
                           state_size=12,
                           action_size=5, seed=60)
     for i in range(100):
-        l.append(evaluate_agent_training(agent, 1000, True, 3, 1, 0.25, 0))
+        l.append(evaluate_agent_training(agent, 1000, True, 3, 3, 0.25, 0, 0))
     print(l)
     print(sum(l))
 
 
 
-def evaluate_agent_training(agent, iters, no_gui, difficulty, number_of_items, battery_drain_per_step, epsilon):
+def evaluate_agent_training(agent, iters, no_gui, difficulty, number_of_items, battery_drain_per_step, epsilon, sigma):
 
-    env = Environment()
-    state, _ = env.reset(no_gui=no_gui, difficulty=difficulty, number_of_items=number_of_items, battery_drain_per_step=battery_drain_per_step, agent_start_pos=(2,2))
+    env = Environment(sigma=sigma)
+    state, _ = env.reset(no_gui=no_gui, difficulty=difficulty, number_of_items=number_of_items, battery_drain_per_step=battery_drain_per_step, agent_start_pos=(2,2))  # , extra_obstacles=[(2, 8, 2.5, 8.5)])
     agent.epsilon=epsilon
     for _ in trange(iters):
         action = agent.take_action(state)

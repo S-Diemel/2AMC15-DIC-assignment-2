@@ -44,10 +44,6 @@ def render_gui(self, mode="human", show_full_legend=True, show_difficulty_region
         if draw_xmax > draw_xmin and draw_ymax > draw_ymin:
                 ax.add_patch(Rectangle((draw_xmin, draw_ymin), draw_xmax - draw_xmin, draw_ymax - draw_ymin, color="#eeeded"))
 
-    # Forbidden Zone (Red)
-    for (xmin, ymin, xmax, ymax) in self.forbidden_zones:
-        ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="#fa6e6e", alpha=0.75))
-
     # Charger (Green)
     xmin, ymin, xmax, ymax = self.charger
     ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="#81fd8b", alpha=0.75))
@@ -106,6 +102,7 @@ def render_gui(self, mode="human", show_full_legend=True, show_difficulty_region
         alpha=0.4,       # translucent
     )
     ax.add_patch(vision_tri)
+
     # Draw Agent
     if self.carrying > -1:  # Give orange edge to agent when carrying an item
         ax.add_patch(Circle(self.agent_pos, self.agent_radius, facecolor="#00A800", edgecolor="orange", linewidth=2))
@@ -150,7 +147,6 @@ def render_gui(self, mode="human", show_full_legend=True, show_difficulty_region
             ),
             Patch(facecolor="#fdeeac", edgecolor="none", alpha=0.75, label="Item Spawn"),
             Patch(facecolor="#eeeded", edgecolor="none", label="Delivery Zone"),
-            Patch(facecolor="#fa6e6e", edgecolor="none", alpha=0.75, label="Forbidden Zone"),
             Patch(facecolor="#81fd8b", edgecolor="none", alpha=0.75, label="Charger"),
             Patch(facecolor="#7881ff", edgecolor="none", label="Storage racks"),
             Patch(facecolor="darkred", edgecolor="none", alpha=0.3, label="Delivery Point"),
