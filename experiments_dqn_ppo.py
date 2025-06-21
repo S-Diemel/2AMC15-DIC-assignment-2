@@ -273,7 +273,7 @@ def evaluate(model_path1: Path, model_path2: Path):
     agent2.load(model_path2)
 
     agents = [agent1, agent2]
-    reps = 20
+    reps = 35
     print("Agents Loaded Successfully!")
     experiment_stochasticity(agents, reps=reps)
     print("Experiment Stochasticity Finished!")
