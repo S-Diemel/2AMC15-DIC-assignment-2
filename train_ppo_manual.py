@@ -21,7 +21,7 @@ def parse_args():
                    help="Name of the model to save. ")
     p.add_argument("--no_gui", action="store_true",
                    help="Disables rendering to train faster")
-    p.add_argument("--episodes", type=int, default=5_000,
+    p.add_argument("--episodes", type=int, default=2_000,
                    help="Number of episodes to train the agent for. Each episode is completed by either reaching the target, or putting `iters` steps.")
     p.add_argument("--iters", type=int, default=1_000,
                    help="Number of iterations to go through.")

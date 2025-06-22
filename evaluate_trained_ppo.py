@@ -39,4 +39,4 @@ if __name__ == "__main__":
     args = p.parse_args()
     evaluate(args.model)
 
-    # Command-line example: python evaluate_trained_ppo.py models/ppo_after_training_5000_final.pth
+    # Command-line example: python evaluate_trained_ppo.py models/ppo_after_training_2000_final.pth
