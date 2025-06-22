@@ -94,12 +94,12 @@ class PPOAgent(BaseAgent):
         action_size,
         seed=0,
         gamma=0.99,
-        lr=2.5e-4,
+        lr=5e-4,
         eps_clip=0.2,
         gae_lambda=0.95,
         entropy_coef=0.01,
-        ppo_epochs=4,
-        batch_size=64,
+        ppo_epochs=5,
+        batch_size=128,
         rollout_steps=1024,
         num_envs=4
     ):

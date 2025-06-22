@@ -21,11 +21,11 @@ def parse_args():
                    help="Name of the model to save. ")
     p.add_argument("--no_gui", action="store_true",
                    help="Disables rendering to train faster")
-    p.add_argument("--episodes", type=int, default=10_000,
+    p.add_argument("--episodes", type=int, default=5_000,
                    help="Number of episodes to train the agent for. Each episode is completed by either reaching the target, or putting `iters` steps.")
     p.add_argument("--iters", type=int, default=1_000,
                    help="Number of iterations to go through.")
-    p.add_argument("--random_seed", type=int, default=0,
+    p.add_argument("--random_seed", type=int, default=2,
                    help="Random seed value for the environment.")
     return p.parse_args()
 
@@ -34,30 +34,31 @@ def make_env(difficulty=None):
         return Environment(difficulty=difficulty)
     return _thunk
 
-def get_curriculum_parameters(episode, phase_len, base_entropy=0.1, min_entropy=0.01):
-    # Define curriculum phases:
-    # (entropy_start, entropy_end, difficulty, num_items, battery_drain)
+def get_curriculum_parameters(episode, total_episodes):
+    # Define phases as (phase_num, percent, ent_start, ent_end, difficulty, num_items, battery_drain)
     curriculum = [
-        (0.1, 0.01, 0, 1, 0.0),
-        (0.1, 0.01, 0, 1, 0.25),
-        (0.1, 0.01, 0, 3, 0.25),
-        (0.1, 0.05, 1, 3, 0.25),
-        (0.05, 0.01, 1, 3, 0.25),
-        (0.1, 0.05, 2, 3, 0.25),
-        (0.05, 0.01, 2, 3, 0.25),
-        (0.05, 0.01, 3, 3, 0.25)  # Final fallback phase
+        (1, 0.10, 0.1, 0.05, 0, 1, 0.0),
+        (2, 0.10, 0.1, 0.05, 0, 1, 0.25),
+        (3, 0.20, 0.1, 0.05, 0, 3, 0.25),
+        (4, 0.30, 0.1, 0.01, 1, 3, 0.25),
+        (5, 0.30, 0.1, 0.01, 2, 3, 0.25),
     ]
 
-    phase = min(episode // phase_len, len(curriculum) - 1)
-    entropy_start, entropy_end, difficulty, number_of_items, battery_drain = curriculum[phase]
-    phase_episode = episode - phase * phase_len
+    phase_start = 0
+    for phase_number, percent, ent_start, ent_end, difficulty, number_of_items, battery_drain_per_step in curriculum:
+        phase_len = int(percent * total_episodes)
+        if episode < phase_start + phase_len:
+            phase_episode = episode - phase_start
+            entropy = ent_start - ((ent_start - ent_end) / (0.7 * phase_len)) * phase_episode
+            entropy = max(ent_end, entropy)
+            return phase_number, entropy, difficulty, number_of_items, battery_drain_per_step
+        phase_start += phase_len
 
-    # Linear entropy decay within the phase
-    entropy_coef = entropy_start - ((entropy_start - entropy_end) / (0.7 * phase_len)) * phase_episode
-    entropy_coef = max(entropy_end, entropy_coef)
-    entropy_coef = max(min_entropy, entropy_coef)
+    # If episode exceeds total_episodes due to rounding, default to last phase settings
+    phase_number, percent, ent_start, ent_end, difficulty, number_of_items, battery_drain_per_step = curriculum[-1]
+    entropy = ent_end
+    return phase_number, entropy, difficulty, number_of_items, battery_drain_per_step
 
-    return difficulty, number_of_items, battery_drain, entropy_coef
 
 
 def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
@@ -72,15 +73,14 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
     # Initialize agent
     agent = PPOAgent(state_size=12, action_size=5, seed=random_seed, num_envs=num_envs)
 
-    # Curriculum schedule: split episodes based on difficulty, lower to higher
-    phase_len = episodes // 8
-
     for episode in range(episodes):
 
-        print(f"Episode batch {episode + 1}/{episodes}")
+        # Get curriculum settings
+        phase_number, entropy_coef, difficulty, number_of_items, battery_drain_per_step = get_curriculum_parameters(episode, episodes)
 
-        # Evaluate every few episodes
-        difficulty, number_of_items, battery_drain_per_step, entropy_coef = get_curriculum_parameters(episode, phase_len)
+        print(f"Episode batch {episode + 1}/{episodes} - Entropy: {entropy_coef:.4f} - Phase: {phase_number}")
+
+        # Assign entropy coef to PPO agent
         agent.entropy_coef = entropy_coef
 
         # if (episode + 1) % 100_000 == 0:
@@ -88,8 +88,7 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
         #                             number_of_items=number_of_items, battery_drain_per_step=battery_drain_per_step)
 
         # Set difficulty for curriculum learning
-        opts = {"difficulty": difficulty, 'number_of_items': number_of_items,
-                'battery_drain_per_step': battery_drain_per_step}
+        opts = {"difficulty": difficulty, 'number_of_items': number_of_items, 'battery_drain_per_step': battery_drain_per_step, 'difficulty_mode': "train"}
 
         # Resetting all parallel envs
 
@@ -99,7 +98,7 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
         # Initialize tracking variables
         episode_rewards = np.zeros(num_envs)
         active_envs = np.ones(num_envs, dtype=bool)
-        terminated_envs = np.ones(num_envs, dtype=bool)
+        terminated_envs = np.zeros(num_envs, dtype=bool)
 
         for timestep in range(iters):
             # Get actions for all environments at once
@@ -120,13 +119,12 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
 
             # Track rewards
             episode_rewards += rewards
+            terminated_envs |= terminated
             active_envs &= ~(terminated | truncated)
-            terminated_envs &= ~terminated
 
             # Prepare for next step
             states = next_states
-
-            # Check if we should learn (now handled inside update())
+            #
             if not np.any(active_envs):
                 break
 
@@ -136,14 +134,14 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
         # Log to TensorBoard
         writer.add_scalar("Reward/AverageEpisodeReward", avg_reward, global_step=episode)
         # Print number of envs where objective was completed
-        print(~terminated_envs)
+        print(terminated_envs)
 
         # Optional: Save model periodically
-        if (episode + 1) % 500 == 0:
+        if (episode + 1) % 1_000 == 0:
             agent.save(f"models/ppo/ppo_{episode + 1}.pth")
 
 
-    model_path = f"models/ppo_after_training_{episodes}_v3.pth"
+    model_path = f"models/ppo_after_training_{episodes}_final.pth"
     agent.save(model_path)
     print(f"Saved trained model to -> {model_path}")
 
