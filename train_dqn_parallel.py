@@ -7,61 +7,38 @@ from tqdm import trange
 from gymnasium.vector import AsyncVectorEnv
 from world.environment import Environment
 from agents.dqn import DQNAgent
-from evaluate_trained_dqn import evaluate_agent_training
-import time
+from train_curriculum_utils import setup_curriculum, get_curriculum_parameters, evaluate_agent_metrics, save_metrics_to_csv
+
 
 def parse_args():
     p = ArgumentParser(description="DIC Reinforcement Learning Trainer.")
     p.add_argument("--name", type=str, default="", 
-                   help="Name of the model to save. ")
+                   help="Name of the model to save.")
     p.add_argument("--no_gui", action="store_true",
                    help="Disables rendering to train faster")
     p.add_argument("--episodes", type=int, default=10000,
-                   help="Number of episodes to train the agent for. " \
-                   "Each episode is completed by either reaching the target, or putting `iters` steps.")
+                   help="Number of episodes to train the agent for.")
     p.add_argument("--iters", type=int, default=1000,
-                   help="Number of iterations to go through.")
+                   help="Number of iterations per batch.")
     p.add_argument("--random_seed", type=int, default=2,
                    help="Random seed value for the environment.")
-    p.add_argument("--epsilon", type=float, default=1.0,
-                   help="Initial epsilon value for the epsilon-greedy policy.")
-    p.add_argument("--epsilon_min", type=float, default=0.01,
-                   help="Minimum epsilon value for the epsilon-greedy policy.")
-    p.add_argument("--epsilon_decay_proportion", type=float, default=0.7,
-                   help="Proportion of training to decay epsilon over. " \
-                   "0.5 means that halfway of the training procedure we the epsilon has reached in minimum value of 0.1.")
     return p.parse_args()
 
+
+# Define curriculum phases as:
+# (percent_of_total, eps_start, eps_end, difficulty, num_items, battery_drain)
+curriculum = [
+    (0.10, 1.0, 0.1,  0, 1, 0.0),
+    (0.10, 0.5, 0.05, 0, 1, 0.25),
+    (0.20, 0.3, 0.05, 0, 3, 0.25),
+    (0.30, 0.3, 0.05, 1, 3, 0.25),
+    (0.30, 0.3, 0.01, 2, 3, 0.25),
+]
 
 def make_env():
     def _thunk():
         return Environment()
     return _thunk
-
-def get_curriculum_parameters(episode, total_episodes):
-    # Define phases as (percent, eps_start, eps_end, difficulty, num_items, battery_drain)
-    curriculum = [
-        (1, 0.10, 1.0, 0.1, 0, 1, 0.0),
-        (2, 0.10, 0.5, 0.05, 0, 1, 0.25),
-        (3, 0.20, 0.3, 0.05, 0, 3, 0.25),
-        (4, 0.30, 0.3, 0.05, 1, 3, 0.25),
-        (5, 0.30, 0.3, 0.01, 2, 3, 0.25),
-    ]
-
-    phase_start = 0
-    for phase_number, percent, eps_start, eps_end, difficulty, number_of_items, battery_drain_per_step in curriculum:
-        phase_len = int(percent * total_episodes)
-        if episode < phase_start + phase_len:
-            phase_episode = episode - phase_start
-            epsilon = eps_start - ((eps_start - eps_end) / (0.7 * phase_len)) * phase_episode
-            epsilon = max(eps_end, epsilon)
-            return phase_number, epsilon, difficulty, number_of_items, battery_drain_per_step
-        phase_start += phase_len
-
-    # If episode exceeds total_episodes due to rounding, default to last phase settings
-    phase_number, percent, eps_start, eps_end, difficulty, number_of_items, battery_drain_per_step = curriculum[-1]
-    epsilon = eps_end
-    return phase_number, epsilon, difficulty, number_of_items, battery_drain_per_step
 
 
 def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
@@ -70,26 +47,33 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
     envs = AsyncVectorEnv([make_env() for _ in range(num_envs)])
     agent = DQNAgent(state_size=12, action_size=5, seed=random_seed)
 
-    # Curriculum schedule: split episodes into 4 equal parts
     total_episodes = episodes // num_envs
 
+    curriculum_phases = setup_curriculum(total_episodes, curriculum, 3)
+    print(curriculum_phases)
+    metrics_by_stage = {}
 
     for episode in range(episodes // num_envs):
 
-        phase_number, epsilon, difficulty, number_of_items, battery_drain_per_step = get_curriculum_parameters(episode, total_episodes)
+        phase_number, epsilon, difficulty, number_of_items, \
+            battery_drain_per_step, should_evaluate = get_curriculum_parameters(episode, curriculum_phases)
+        
+        if should_evaluate:
+            eval_index = curriculum_phases[phase_number-1]['eval_points'].index(episode)
+            print(f"Evaluating agent at episode {episode} (eval point {eval_index}) - Phase: {phase_number}")
+            # TODO: no_gui False is not working
+            metrics = evaluate_agent_metrics(agent, difficulty, number_of_items, battery_drain_per_step, no_gui=False)
+            metrics_by_stage[(phase_number, eval_index)] = metrics
 
         print(f"Episode batch {episode + 1}/{episodes // num_envs} - Epsilon: {epsilon:.4f} - Phase: {phase_number}")
 
-        if not no_gui and (episode+1) % 500000 == 0 and episode != 0:
-            evaluate_agent_training(agent=agent, iters=500, no_gui=False, difficulty=difficulty, number_of_items= number_of_items, battery_drain_per_step= battery_drain_per_step, epsilon=0.1)
-
         agent.epsilon=epsilon
-        opts = {"difficulty": difficulty, 'number_of_items': number_of_items, 'battery_drain_per_step': battery_drain_per_step, 'difficulty_mode': "train"}
-
+        opts = {"difficulty": difficulty, 'number_of_items': number_of_items, 
+                'battery_drain_per_step': battery_drain_per_step, 'difficulty_mode': "train"}
         states, _ = envs.reset(options=opts)
 
-        done_flags = num_envs*[False]
-        terminated_flags = num_envs*[False]
+        done_flags = [False] * num_envs
+        terminated_flags = [False] * num_envs
         for _ in trange(iters):
             # take action + step in `num_envs` parallel environments
             actions = [agent.take_action(state) for state in states]
@@ -98,27 +82,27 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
                 done = terminateds[j] or truncateds[j]
                 if terminateds[j]:
                     terminated_flags[j] = True
-                if done_flags[j]==False:
-                    agent.update(states[j], actions[j], rewards[j], next_states[j], done)
+                if done_flags[j] == False:
+                    agent.update(states[j], actions[j],
+                                 rewards[j], next_states[j], done)
                     if done:
-                        done_flags[j]=True
+                        done_flags[j] = True
             states = next_states
             if all(done_flags):
                 break
-
         print(terminated_flags)
+
+    # Save the trained model
     model_path = f"models/dqn_{name}.pth"
     agent.save(model_path)
     print(f"Saved trained model to -> {model_path}")
 
+    # Save updated metrics to csv
+    csv_filename = f"metrics/dqn_{name}_metrics.csv"
+    save_metrics_to_csv(metrics_by_stage, csv_filename)
+    print(f"Saved evaluation metrics to -> {csv_filename}")
 
 
 if __name__ == '__main__':
     args = parse_args()
     main(args.name, args.no_gui, args.episodes, args.iters, args.random_seed)
-
-
-
-
-
-
