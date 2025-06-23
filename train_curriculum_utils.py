@@ -4,11 +4,15 @@ from tqdm import trange
 
 
 def setup_curriculum(total_episodes, curriculum, num_evaluations_per_phase):
-    """Precompute phase boundaries, parameters, and evaluation points."""
+    """
+    Precompute phase boundaries, parameters, and evaluation points.
+    Calculating epsilon for DQN and entropy for PPO
+    """
+
     phases = []
     start_ep = 0
     for phase in curriculum:
-        percent, eps_start, eps_end, difficulty, num_items, battery_drain = phase
+        percent, value_start, value_end, difficulty, num_items, battery_drain = phase
         end_ep = start_ep + int(percent * total_episodes) - 1
         phase_length = end_ep - start_ep + 1
         
@@ -22,8 +26,8 @@ def setup_curriculum(total_episodes, curriculum, num_evaluations_per_phase):
         phases.append({
             'start_ep': start_ep,
             'end_ep': end_ep,
-            'eps_start': eps_start,
-            'eps_end': eps_end,
+            'value_start': value_start,
+            'value_end': value_end,
             'difficulty': difficulty,
             'num_items': num_items,
             'battery_drain': battery_drain,
@@ -40,19 +44,19 @@ def get_curriculum_parameters(episode, phases):
     """Get params for current episode including whether to evaluate."""
     for phase in phases:
         if phase['start_ep'] <= episode <= phase['end_ep']:
-            # Calculate epsilon
+            # Calculate epsilon or entropy
             decay_length = int(0.7 * (phase['end_ep'] - phase['start_ep'] + 1))
             phase_progress = min(episode - phase['start_ep'], decay_length)
             
-            epsilon = phase['eps_start'] - (phase['eps_start'] - phase['eps_end']) * (phase_progress / decay_length) if decay_length > 0 else phase['eps_end']
-            epsilon = max(phase['eps_end'], epsilon)
+            value = phase['value_start'] - (phase['value_start'] - phase['value_end']) * (phase_progress / decay_length) if decay_length > 0 else phase['value_end']
+            value = max(phase['value_end'], value)
             
             # Check if this is an evaluation point
             should_evaluate = episode in phase['eval_points']
             
             return (
                 phases.index(phase) + 1,    # phase_number
-                epsilon,
+                value,
                 phase['difficulty'],
                 phase['num_items'],
                 phase['battery_drain'],
@@ -72,7 +76,8 @@ def evaluate_agent_metrics(agent, difficulty, number_of_items, battery_drain_per
         env = Environment(sigma=sigma)
         state, _ = env.reset(no_gui=no_gui, difficulty=difficulty, number_of_items=number_of_items, 
                              battery_drain_per_step=battery_drain_per_step, difficulty_mode="eval")
-        agent.epsilon = epsilon
+        # Update agent epsilon if agent is DQN, else no value to change for ppo
+        if hasattr(agent, 'epsilon'): agent.epsilon = epsilon
         cumulative_reward = 0
         steps = 0
         terminated = False

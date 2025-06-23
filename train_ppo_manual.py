@@ -4,12 +4,12 @@ Train your RL Agent in this file.
 
 from argparse import ArgumentParser
 from gymnasium.vector import AsyncVectorEnv
-from tqdm import trange
 from world.environment import Environment
 from agents.ppo import PPOAgent
 import numpy as np
 # from evaluate_trained_ppo import evaluate_agent_training
 from torch.utils.tensorboard import SummaryWriter
+from train_curriculum_utils import setup_curriculum, get_curriculum_parameters, evaluate_agent_metrics, save_metrics_to_csv
 import time
 
 # Simple tensorboard logging
@@ -18,47 +18,31 @@ writer = SummaryWriter(log_dir=f"logs/ppo_training_10k")
 def parse_args():
     p = ArgumentParser(description="DIC Reinforcement Learning Trainer.")
     p.add_argument("--name", type=str, default="",
-                   help="Name of the model to save. ")
+                   help="Name of the model to save.")
     p.add_argument("--no_gui", action="store_true",
                    help="Disables rendering to train faster")
-    p.add_argument("--episodes", type=int, default=2_000,
-                   help="Number of episodes to train the agent for. Each episode is completed by either reaching the target, or putting `iters` steps.")
+    p.add_argument("--episodes", type=int, default=2_500,
+                   help="Number of episodes to train the agent for.")
     p.add_argument("--iters", type=int, default=1_000,
-                   help="Number of iterations to go through.")
+                   help="Number of iterations per batch.")
     p.add_argument("--random_seed", type=int, default=2,
                    help="Random seed value for the environment.")
     return p.parse_args()
+
+# Define curriculum phases as:
+# (percent_of_total, entropy_start, entropy_end, difficulty, num_items, battery_drain)
+curriculum = [
+        (0.10, 0.1, 0.05, 0, 1, 0.0),
+        (0.10, 0.1, 0.05, 0, 1, 0.25),
+        (0.20, 0.1, 0.05, 0, 3, 0.25),
+        (0.30, 0.1, 0.01, 1, 3, 0.25),
+        (0.30, 0.1, 0.01, 2, 3, 0.25),
+    ]
 
 def make_env(difficulty=None):
     def _thunk():
         return Environment(difficulty=difficulty)
     return _thunk
-
-def get_curriculum_parameters(episode, total_episodes):
-    # Define phases as (phase_num, percent, ent_start, ent_end, difficulty, num_items, battery_drain)
-    curriculum = [
-        (1, 0.10, 0.1, 0.05, 0, 1, 0.0),
-        (2, 0.10, 0.1, 0.05, 0, 1, 0.25),
-        (3, 0.20, 0.1, 0.05, 0, 3, 0.25),
-        (4, 0.30, 0.1, 0.01, 1, 3, 0.25),
-        (5, 0.30, 0.1, 0.01, 2, 3, 0.25),
-    ]
-
-    phase_start = 0
-    for phase_number, percent, ent_start, ent_end, difficulty, number_of_items, battery_drain_per_step in curriculum:
-        phase_len = int(percent * total_episodes)
-        if episode < phase_start + phase_len:
-            phase_episode = episode - phase_start
-            entropy = ent_start - ((ent_start - ent_end) / (0.7 * phase_len)) * phase_episode
-            entropy = max(ent_end, entropy)
-            return phase_number, entropy, difficulty, number_of_items, battery_drain_per_step
-        phase_start += phase_len
-
-    # If episode exceeds total_episodes due to rounding, default to last phase settings
-    phase_number, percent, ent_start, ent_end, difficulty, number_of_items, battery_drain_per_step = curriculum[-1]
-    entropy = ent_end
-    return phase_number, entropy, difficulty, number_of_items, battery_drain_per_step
-
 
 
 def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
@@ -73,19 +57,27 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
     # Initialize agent
     agent = PPOAgent(state_size=12, action_size=5, seed=random_seed, num_envs=num_envs)
 
+    curriculum_phases = setup_curriculum(episodes, curriculum, 3)
+    print(curriculum_phases)
+    metrics_by_stage = {}
+
     for episode in range(episodes):
 
         # Get curriculum settings
-        phase_number, entropy_coef, difficulty, number_of_items, battery_drain_per_step = get_curriculum_parameters(episode, episodes)
+        phase_number, entropy_coef, difficulty, number_of_items, \
+            battery_drain_per_step, should_evaluate = get_curriculum_parameters(episode, curriculum_phases)
+
+        if should_evaluate:
+            eval_index = curriculum_phases[phase_number-1]['eval_points'].index(episode)
+            print(f"Evaluating agent at episode {episode} (eval point {eval_index}) - Phase: {phase_number}")
+            # TODO: no_gui False is not working
+            metrics = evaluate_agent_metrics(agent, difficulty, number_of_items, battery_drain_per_step, no_gui=False)
+            metrics_by_stage[(phase_number, eval_index)] = metrics
 
         print(f"Episode batch {episode + 1}/{episodes} - Entropy: {entropy_coef:.4f} - Phase: {phase_number}")
 
         # Assign entropy coef to PPO agent
         agent.entropy_coef = entropy_coef
-
-        # if (episode + 1) % 100_000 == 0:
-        #     evaluate_agent_training(agent=agent, iters=500, no_gui=False, difficulty=difficulty,
-        #                             number_of_items=number_of_items, battery_drain_per_step=battery_drain_per_step)
 
         # Set difficulty for curriculum learning
         opts = {"difficulty": difficulty, 'number_of_items': number_of_items, 'battery_drain_per_step': battery_drain_per_step, 'difficulty_mode': "train"}
@@ -144,6 +136,11 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
     model_path = f"models/ppo_after_training_{episodes}_final.pth"
     agent.save(model_path)
     print(f"Saved trained model to -> {model_path}")
+
+    # Save updated metrics to csv
+    csv_filename = f"metrics/ppo_{name}_metrics.csv"
+    save_metrics_to_csv(metrics_by_stage, csv_filename)
+    print(f"Saved evaluation metrics to -> {csv_filename}")
 
     end_time = time.time()
     print(f"Took {end_time - start_time:.2f} seconds")
