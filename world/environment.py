@@ -52,7 +52,7 @@ class Environment(gym.Env):
         self.orientation = 0
         self.agent_angle = 45  # the agents angle step-size
         self.max_range = 5 # Maximum range for sensors
-        self.battery_drain_per_step = 0.0  # In reset, the battery is always reset to 100%
+        self.battery_drain_per_step = 0.25  # In reset, the battery is always reset to 100%
         self.battery_value_reward_charging = 50  # From which battery level to reward the agent for going to the charging station.
 
         # Define the layout based on the image

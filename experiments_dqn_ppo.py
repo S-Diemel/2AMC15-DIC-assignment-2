@@ -17,7 +17,7 @@ from agents.ppo import PPOAgent
 
 RESULTS_DIR = Path("results")
 RESULTS_DIR.mkdir(exist_ok=True)
-RESULTS_TXT = RESULTS_DIR / "stochasticity_results.txt"
+RESULTS_TXT = RESULTS_DIR / "all_results.txt"
 
 # note: change environment to experiment=True to run rewards
 
@@ -42,21 +42,7 @@ def run_episode(env, agent, name_exp, delivery_zones=None, max_steps=1000, no_gu
     return terminated, steps, total_reward  # original reward return
 
 
-def _run_episode_override(env, agent, initial_state, max_steps=1000):
-    state = initial_state
-    steps = 0
-    for _ in range(max_steps):
-        action = agent.take_action(state)
-        state, _, terminated, truncated, _ = env.step(action)
-        steps += 1
-        if terminated or truncated:
-            break
-    success = terminated
-    # preserve original reward accumulation for logging
-    return success, steps, (100.0 if success else 0.0) - float(steps)
-
-def experiment_stochasticity(agents, levels=(0.1, 0.3, 0.5, 0.7, 0.9,
-                                             ), reps=20):
+def experiment_stochasticity(agents, levels=(0, 0.02, 0.05, 0.1, 0.2, 0.5), reps=20):
     all_results = []
     for agent in agents:
         success_rates = []
@@ -93,6 +79,7 @@ def experiment_stochasticity(agents, levels=(0.1, 0.3, 0.5, 0.7, 0.9,
         levels, all_results, "Stochasticity", "stochasticity_plot.png", boxplot=True
     )
     append_to_txt("Stochasticity", levels, all_results)
+
 
 def experiment_difficulty(agents, levels=(0,1,2,3,4,5), reps=20):
     all_results = []
@@ -137,64 +124,48 @@ def experiment_difficulty(agents, levels=(0,1,2,3,4,5), reps=20):
     )
     append_to_txt("Difficulty", xs, all_results)
 
-def experiment_target_distance(agents, reps=20, max_steps=350):
-    levels = [2, 4, 6, 8, 10, 12]
+
+def experiment_target_distance(agents, reps=20):
+    distance_levels = (0, 1, 2, None)  # nearby spawns, medium spawns, hard spawn, all possible spawns
     all_results = []
     for agent in agents:
-        success_rates, avg_steps, avg_rewards, all_steps, all_rewards = [], [], [], [], []
-        for dist in tqdm(levels, desc="Processing Target Distance Levels"):
+        success_rates = []
+        avg_steps = []
+        std_steps = []
+        avg_rewards = []
+        std_rewards = []
+        all_steps = []
+        all_rewards = []
+        for distance in tqdm(distance_levels, desc="Processing Distance Levels"):
             successes = 0
-            steps_list = []
-            rew_list = []
-            for _ in trange(reps, desc=f"Dist {dist}"):
-                env = Environment()
-                goal = None
-                start = None
-                for _ in range(20):
-                    _, _ = env.reset()
-                    start = env.agent_pos.copy()
-                    tol = 0.5
-                    for _ in range(100):
-                        candidate = np.array(
-                            sample_one_point_outside(
-                                env.all_obstacles,
-                                env.agent_radius,
-                                (0, 0, env.width, env.height)
-                            )
-                        )
-                        if abs(np.linalg.norm(candidate - start) - dist) <= tol:
-                            goal = candidate
-                            break
-                    if goal is not None:
-                        break
-                if goal is None:
-                    succ = False
-                    st = max_steps
-                    rw = 0.0 - st
-                else:
-                    env.item_starts     = [start]
-                    env.delivery_points = [goal]
-                    env.delivered       = [False]
-                    env.carrying        = -1
-                    state = env._compute_features()
-                    succ, st, _ = _run_episode_override(env, agent, state, max_steps=max_steps)
-                    rw = (100.0 if succ else 0.0) - st
-                if succ:
+            steps_record = []
+            rewards_record = []
+            steps_successful = []
+            rewards_successful = []
+            for _ in range(reps):
+                env = Environment(difficulty=distance)
+                success, steps, total_reward = run_episode(env, agent, "distance")
+                if success:
                     successes += 1
-                steps_list.append(st)
-                rew_list.append(rw)
+                    steps_record.append(steps)
+                    rewards_record.append(total_reward)
+                    steps_successful.append(steps)
+                    rewards_successful.append(total_reward)
             success_rates.append(successes / reps)
-            avg_steps.append(np.mean(steps_list))
-            avg_rewards.append(np.mean(rew_list))
-            all_steps.append(steps_list)
-            all_rewards.append(rew_list)
-        all_results.append((success_rates, avg_steps, [0]*len(levels), avg_rewards, [0]*len(levels), all_steps, all_rewards))
+            avg_steps.append(np.mean(steps_record) if steps_record else 0)
+            std_steps.append(np.std(steps_record) if steps_record else 0)
+            avg_rewards.append(np.mean(rewards_record) if rewards_record else 0)
+            std_rewards.append(np.std(rewards_record) if rewards_record else 0)
+            all_steps.append(steps_successful)
+            all_rewards.append(rewards_successful)
+        all_results.append((success_rates, avg_steps, std_steps, avg_rewards, std_rewards, all_steps, all_rewards))
     plot_results(
-        levels, all_results, "TargetDistance", "target_distance_plot.png", boxplot=False
+        ["Small", "Medium", "Large", "Random"], all_results, "Distance", "target_distance_plot.png", boxplot=True
     )
-    append_to_txt("TargetDistance", levels, all_results)
+    append_to_txt("Distance", distance_levels, all_results)
 
-def plot_results(x_values, all_results, xlabel, filename, boxplot=True):
+
+def plot_results(x_values, all_results, xlabel, filename, boxplot=False):
     plt.figure(figsize=(15, 4))
     agent_colors = ['orange', 'green']
     agent_labels = ['DQN', 'PPO']
@@ -252,6 +223,7 @@ def plot_results(x_values, all_results, xlabel, filename, boxplot=True):
     plt.savefig(RESULTS_DIR / filename)
     plt.close()
 
+
 def append_to_txt(title, x, all_results):
     with open(RESULTS_TXT, "a") as f:
         f.write(f"\n\n{title} Experiment\n")
@@ -260,20 +232,19 @@ def append_to_txt(title, x, all_results):
             f.write(f"{title}\tSuccessRate\tAvgSteps\tAvgReward\n")
             for a, sr, s, r in zip(x, success_rates, avg_steps, avg_rewards):
                 f.write(f"{a}\t\t{sr:.2f}\t\t{s:.2f}\t\t{r:.2f}\n")
+                
 
 def evaluate(model_path1: Path, model_path2: Path):
     print('Loading dqn: agent 1 from:', model_path1)
     agent1 = DQNAgent.load(str(model_path1), state_size=12, action_size=5)
     agent1.epsilon = 0.0
     print('Loading ppo: agent 2 from:', model_path2)
-    # agent2 = DQNAgent.load(str(model_path2), state_size=12, action_size=5)
-    # agent2.epsilon = 0.0
     
     agent2 = PPOAgent(state_size=12, action_size=5, seed=12, num_envs=1)
     agent2.load(model_path2)
 
     agents = [agent1, agent2]
-    reps = 100
+    reps = 5
     print("Agents Loaded Successfully!")
     experiment_stochasticity(agents, reps=reps)
     print("Experiment Stochasticity Finished!")
