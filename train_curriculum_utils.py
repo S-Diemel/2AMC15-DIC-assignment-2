@@ -127,17 +127,19 @@ def save_metrics_to_csv(metrics_by_stage, filename):
         for (phase_number, eval_stage), metrics in sorted(metrics_by_stage.items()):
             n = len(metrics)
             success_rate = sum(m['terminated'] for m in metrics) / n
+            avg_percent_delivered = sum(m['percent_delivered'] for m in metrics) / n
             battery_depleted_rate = sum(m['truncated'] and not m['terminated'] for m in metrics) / n
             ran_out_of_steps_rate = sum(m['ran_out_of_steps'] for m in metrics) / n
-            avg_cum_reward = sum(m['cumulative_reward'] for m in metrics) / n
-            avg_steps = sum(m['steps'] for m in metrics) / n
-            avg_percent_delivered = sum(m['percent_delivered'] for m in metrics) / n
+            avg_cum_reward_for_success = sum(m['cumulative_reward'] for m in metrics if m['terminated']) \
+                / max(1, sum(m['terminated'] for m in metrics)) # average over successful episodes
+            avg_steps_for_success = sum(m['steps'] for m in metrics if m['terminated']) \
+                / max(1, sum(m['terminated'] for m in metrics)) # average over successful episodes
             
             writer.writerow({
                 'phase_number': phase_number,
                 'eval_stage': eval_stage,
-                'avg_cumulative_reward': avg_cum_reward,
-                'avg_steps': avg_steps,
+                'avg_cumulative_reward_for_success': avg_cum_reward_for_success,
+                'avg_steps_for_success': avg_steps_for_success,
                 'success_rate': success_rate,
                 'battery_depleted_rate': battery_depleted_rate,
                 'ran_out_of_steps_rate': ran_out_of_steps_rate,
