@@ -273,7 +273,7 @@ def evaluate(model_path1: Path, model_path2: Path):
     agent2.load(model_path2)
 
     agents = [agent1, agent2]
-    reps = 35
+    reps = 100
     print("Agents Loaded Successfully!")
     experiment_stochasticity(agents, reps=reps)
     print("Experiment Stochasticity Finished!")
@@ -283,7 +283,10 @@ def evaluate(model_path1: Path, model_path2: Path):
     print("Experiment Target Distance Finished!")
 
 
-    # python experiments_dqn_ppo.py .\models\best_dqn.pth .\models\ppo_after_training_10000_v3.pth 
+
+    # Following command can was used on 24-6-2025 22:00:
+    # python experiments_dqn_ppo.py .\models\dqn_new.pth.pth .\models\ppo_after_training_2500_final.pth
+    # experiments were run on reps 100
 
 
 if __name__ == "__main__":
