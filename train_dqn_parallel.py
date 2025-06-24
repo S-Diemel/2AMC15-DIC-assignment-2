@@ -8,6 +8,7 @@ from gymnasium.vector import AsyncVectorEnv
 from world.environment import Environment
 from agents.dqn import DQNAgent
 from train_curriculum_utils import setup_curriculum, get_curriculum_parameters, evaluate_agent_metrics, save_metrics_to_csv
+import numpy as np
 
 
 def parse_args():
@@ -72,33 +73,45 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
                 'battery_drain_per_step': battery_drain_per_step, 'difficulty_mode': "train"}
         states, _ = envs.reset(options=opts)
 
-        done_flags = [False] * num_envs
-        terminated_flags = [False] * num_envs
-        for _ in trange(iters):
+        # Initialize tracking variables
+        episode_rewards = np.zeros(num_envs)
+        active_envs = np.ones(num_envs, dtype=bool)
+        terminated_envs = np.zeros(num_envs, dtype=bool)
+
+        for _ in range(iters):
             # take action + step in `num_envs` parallel environments
-            actions = [agent.take_action(state) for state in states]
+            actions = agent.take_actions_batch(states)
             next_states, rewards, terminateds, truncateds, _ = envs.step(actions)
-            for j in range(num_envs):
-                done = terminateds[j] or truncateds[j]
-                if terminateds[j]:
-                    terminated_flags[j] = True
-                if done_flags[j] == False:
-                    agent.update(states[j], actions[j],
-                                 rewards[j], next_states[j], done)
-                    if done:
-                        done_flags[j] = True
+            dones = terminateds | truncateds
+
+            for i in range(num_envs):
+                # Update for all environments - including final step with terminal reward
+                agent.update(states[i], actions[i], rewards[i], next_states[i], dones[i])
+
+            # Track rewards
+            episode_rewards += rewards
+            terminated_envs |= terminateds
+            active_envs &= ~(terminateds | truncateds)
+
+            # Prepare for next step
             states = next_states
-            if all(done_flags):
+            #
+            if not np.any(active_envs):
                 break
-        print(terminated_flags)
+
+        # Print average reward across environments
+        avg_reward = np.mean(episode_rewards)
+        print(f"Average reward across {num_envs} envs: {avg_reward:.2f}")
+        # Print number of envs where objective was completed
+        print(terminated_envs)
 
     # Save the trained model
-    model_path = f"models/dqn_{name}.pth"
+    model_path = f"models/dqn_{name}_new.pth"
     agent.save(model_path)
     print(f"Saved trained model to -> {model_path}")
 
     # Save updated metrics to csv
-    csv_filename = f"metrics/dqn_{name}_metrics.csv"
+    csv_filename = f"metrics/dqn_{name}_metrics_new.csv"
     save_metrics_to_csv(metrics_by_stage, csv_filename)
     print(f"Saved evaluation metrics to -> {csv_filename}")
 

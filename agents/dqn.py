@@ -109,6 +109,27 @@ class DQNAgent(BaseAgent):
     def _device(self):
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+    def take_actions_batch(self, states):
+        """
+        Returns actions for a batch of states as per current policy.
+        More efficient than calling take_action individually.
+        """
+        states = np.array(states, dtype=np.float32)
+        state_tensor = torch.from_numpy(states).float().to(self._device())
+        self.qnetwork_local.eval()
+        with torch.no_grad():
+            action_values = self.qnetwork_local(state_tensor)
+        self.qnetwork_local.train()
+
+        # Epsilon-greedy action selection for batch
+        actions = []
+        for i in range(len(states)):
+            if random.random() > self.epsilon:
+                actions.append(int(torch.argmax(action_values[i]).item()))
+            else:
+                actions.append(random.choice(np.arange(self.action_size)))
+        return actions
+
     def take_action(self, state: tuple[int, int] | np.ndarray) -> int:
         """
         Returns actions for given state as per current policy.
