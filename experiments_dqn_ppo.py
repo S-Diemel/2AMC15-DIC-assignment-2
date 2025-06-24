@@ -76,7 +76,7 @@ def experiment_stochasticity(agents, levels=(0, 0.02, 0.05, 0.1, 0.2, 0.5), reps
             all_rewards.append(rewards_successful)
         all_results.append((success_rates, avg_steps, std_steps, avg_rewards, std_rewards, all_steps, all_rewards))
     plot_results(
-        levels, all_results, "Stochasticity", "stochasticity_plot.png", boxplot=True
+        levels, all_results, "Stochasticity", "stochasticity_plot.png", boxplot=False
     )
     append_to_txt("Stochasticity", levels, all_results)
 
@@ -160,7 +160,7 @@ def experiment_target_distance(agents, reps=20):
             all_rewards.append(rewards_successful)
         all_results.append((success_rates, avg_steps, std_steps, avg_rewards, std_rewards, all_steps, all_rewards))
     plot_results(
-        ["Small", "Medium", "Large", "Random"], all_results, "Distance", "target_distance_plot.png", boxplot=True
+        ["Small", "Medium", "Large", "Random"], all_results, "Distance", "target_distance_plot.png", boxplot=False
     )
     append_to_txt("Distance", distance_levels, all_results)
 
@@ -244,7 +244,7 @@ def evaluate(model_path1: Path, model_path2: Path):
     agent2.load(model_path2)
 
     agents = [agent1, agent2]
-    reps = 5
+    reps = 100
     print("Agents Loaded Successfully!")
     experiment_stochasticity(agents, reps=reps)
     print("Experiment Stochasticity Finished!")
@@ -255,8 +255,8 @@ def evaluate(model_path1: Path, model_path2: Path):
 
 
 
-    # Following command can was used on 24-6-2025 22:00:
-    # python experiments_dqn_ppo.py .\models\dqn_new.pth.pth .\models\ppo_after_training_2500_final.pth
+    # Following command  was used on 24-6-2025 21:38:
+    # python experiments_dqn_ppo.py .\models\dqn_new.pth .\models\ppo_after_training_2500_final.pth
     # experiments were run on reps 100
 
 

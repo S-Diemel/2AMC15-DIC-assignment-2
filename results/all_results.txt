@@ -104,3 +104,162 @@ Distance	SuccessRate	AvgSteps	AvgReward
 1		0.80		506.75		-147.73
 2		1.00		454.00		-87.43
 None		1.00		643.80		-197.31
+
+
+Stochasticity Experiment
+Agent 1
+Stochasticity	SuccessRate	AvgSteps	AvgReward
+0		0.80		393.75		-97.19
+0.02		0.60		711.33		-221.35
+0.05		1.00		529.20		-169.15
+0.1		0.80		506.50		-153.76
+0.2		0.40		443.50		-137.07
+0.5		0.60		512.33		-223.70
+Agent 2
+Stochasticity	SuccessRate	AvgSteps	AvgReward
+0		0.60		381.00		-92.03
+0.02		0.80		584.25		-195.06
+0.05		0.60		511.33		-234.30
+0.1		0.60		735.00		-333.87
+0.2		0.60		741.00		-603.25
+0.5		0.60		632.00		-496.01
+
+
+Difficulty Experiment
+Agent 1
+Difficulty	SuccessRate	AvgSteps	AvgReward
+0		1.00		496.40		-138.78
+1		0.60		694.67		-238.62
+2		0.00		0.00		0.00
+3		0.00		0.00		0.00
+4		0.00		0.00		0.00
+5		0.00		0.00		0.00
+Agent 2
+Difficulty	SuccessRate	AvgSteps	AvgReward
+0		0.60		624.67		-191.59
+1		0.40		595.00		-190.88
+2		1.00		528.60		-159.99
+3		0.40		425.00		-145.12
+4		0.40		732.00		-749.82
+5		0.60		559.00		-246.26
+
+
+Distance Experiment
+Agent 1
+Distance	SuccessRate	AvgSteps	AvgReward
+0		0.60		427.33		-136.53
+1		0.80		457.75		-122.06
+2		1.00		543.00		-123.05
+None		1.00		565.00		-158.82
+Agent 2
+Distance	SuccessRate	AvgSteps	AvgReward
+0		0.60		712.67		-250.25
+1		0.80		506.75		-147.73
+2		1.00		454.00		-87.43
+None		1.00		643.80		-197.31
+
+
+Stochasticity Experiment
+Agent 1
+Stochasticity	SuccessRate	AvgSteps	AvgReward
+0		0.80		393.75		-97.19
+0.02		0.60		711.33		-221.35
+0.05		1.00		529.20		-169.15
+0.1		0.80		506.50		-153.76
+0.2		0.40		443.50		-137.07
+0.5		0.60		512.33		-223.70
+Agent 2
+Stochasticity	SuccessRate	AvgSteps	AvgReward
+0		0.60		381.00		-92.03
+0.02		0.80		584.25		-195.06
+0.05		0.60		511.33		-234.30
+0.1		0.60		735.00		-333.87
+0.2		0.60		741.00		-603.25
+0.5		0.60		632.00		-496.01
+
+
+Difficulty Experiment
+Agent 1
+Difficulty	SuccessRate	AvgSteps	AvgReward
+0		1.00		496.40		-138.78
+1		0.60		694.67		-238.62
+2		0.00		0.00		0.00
+3		0.00		0.00		0.00
+4		0.00		0.00		0.00
+5		0.00		0.00		0.00
+Agent 2
+Difficulty	SuccessRate	AvgSteps	AvgReward
+0		0.60		624.67		-191.59
+1		0.40		595.00		-190.88
+2		1.00		528.60		-159.99
+3		0.40		425.00		-145.12
+4		0.40		732.00		-749.82
+5		0.60		559.00		-246.26
+
+
+Distance Experiment
+Agent 1
+Distance	SuccessRate	AvgSteps	AvgReward
+0		0.60		427.33		-136.53
+1		0.80		457.75		-122.06
+2		1.00		543.00		-123.05
+None		1.00		565.00		-158.82
+Agent 2
+Distance	SuccessRate	AvgSteps	AvgReward
+0		0.60		712.67		-250.25
+1		0.80		506.75		-147.73
+2		1.00		454.00		-87.43
+None		1.00		643.80		-197.31
+
+
+Stochasticity Experiment
+Agent 1
+Stochasticity	SuccessRate	AvgSteps	AvgReward
+0		0.81		495.17		-137.97
+0.02		0.79		532.15		-157.97
+0.05		0.83		542.46		-169.34
+0.1		0.81		524.41		-167.41
+0.2		0.76		524.37		-187.76
+0.5		0.73		557.56		-262.57
+Agent 2
+Stochasticity	SuccessRate	AvgSteps	AvgReward
+0		0.83		580.99		-177.49
+0.02		0.82		550.83		-177.56
+0.05		0.74		574.28		-229.79
+0.1		0.65		614.75		-292.93
+0.2		0.67		660.25		-408.46
+0.5		0.54		590.37		-410.01
+
+
+Difficulty Experiment
+Agent 1
+Difficulty	SuccessRate	AvgSteps	AvgReward
+0		0.83		549.27		-161.90
+1		0.82		620.05		-206.84
+2		0.28		412.14		-151.58
+3		0.06		359.33		-139.07
+4		0.00		0.00		0.00
+5		0.04		380.00		-97.21
+Agent 2
+Difficulty	SuccessRate	AvgSteps	AvgReward
+0		0.82		546.55		-158.19
+1		0.89		552.85		-171.90
+2		0.84		552.24		-191.91
+3		0.11		470.36		-238.09
+4		0.25		621.52		-363.87
+5		0.29		582.76		-247.28
+
+
+Distance Experiment
+Agent 1
+Distance	SuccessRate	AvgSteps	AvgReward
+0		0.75		550.83		-186.59
+1		0.74		578.09		-174.54
+2		0.90		515.92		-116.64
+None		0.78		517.65		-144.94
+Agent 2
+Distance	SuccessRate	AvgSteps	AvgReward
+0		0.72		612.25		-214.18
+1		0.89		544.20		-160.53
+2		0.87		524.79		-119.82
+None		0.88		543.20		-160.69
