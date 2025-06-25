@@ -120,9 +120,9 @@ def experiment_difficulty(agents, levels=(0,1,2,3,4,5), reps=20):
             all_rewards.append(rew_list)
         all_results.append((srates, avg_steps, [0]*len(xs), avg_rews, [0]*len(xs), all_steps, all_rewards))
     plot_results(
-        xs, all_results, "Difficulty", "difficulty_plot.png", boxplot=False
+        xs, all_results, "Number of Obstacles", "obstacles.png", boxplot=False
     )
-    append_to_txt("Difficulty", xs, all_results)
+    append_to_txt("Obstacles", xs, all_results)
 
 
 def experiment_target_distance(agents, reps=20):
@@ -249,7 +249,7 @@ def evaluate(model_path1: Path, model_path2: Path):
     experiment_stochasticity(agents, reps=reps)
     print("Experiment Stochasticity Finished!")
     experiment_difficulty(agents, reps=reps)
-    print("Experiment Difficulty Finished!")
+    print("Experiment Number of Obstacles Finished!")
     experiment_target_distance(agents, reps=reps)
     print("Experiment Target Distance Finished!")
 
