@@ -18,7 +18,7 @@ def evaluate(model_path: Path):
 def evaluate_agent_training(agent, iters, no_gui, difficulty, number_of_items, battery_drain_per_step, sigma):
 
     env = Environment(sigma=sigma)
-    state, _ = env.reset(difficulty=difficulty, number_of_items=number_of_items, battery_drain_per_step=battery_drain_per_step, agent_start_pos=(2,2))  # , extra_obstacles=[(2, 8, 2.5, 8.5)])
+    state, _ = env.reset(no_gui=no_gui, difficulty=difficulty, number_of_items=number_of_items, battery_drain_per_step=battery_drain_per_step)
     for _ in trange(iters):
         action = agent.take_action(state)
         next_state, reward, terminated, truncated, _ = env.step(action)
