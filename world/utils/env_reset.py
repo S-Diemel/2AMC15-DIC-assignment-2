@@ -115,7 +115,7 @@ def set_difficulty_of_env(item_spawn, width, height, difficulty=None, mode='eval
         return difficulty_region
 
 def calc_barcode_triangle(agent_pos, orientation, agent_radius):
-    """Calc the corners of the vision triangle"""
+    """Calc the corners of the barcode triangle"""
     max_range=np.sqrt(2)
     left_side_triangle = (orientation-45)%360
     right_side_triangle = (orientation+45)%360
