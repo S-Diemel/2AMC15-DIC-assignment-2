@@ -46,8 +46,6 @@ def default_reward_function(pickup, delivered, collided, charged_battery_level, 
             reward -= collision_penalty*old_speed
         else:
             reward -= collision_penalty
-    if _agent_in_forbidden_zone(agent_pos, agent_radius, forbidden_zones):  # being in a forbidden zone
-        reward -= 1
     return reward
 
 
@@ -56,10 +54,6 @@ def shaping_reward(old_pos, old_target, agent_pos):
     """Potential based shaping of the reward inspired by (g, Harada, & Russell, 1999)"""
     gamma = 0.99  # gamma value we use
 
-    # # Use Chebyshev distance when you do allow diagonal moves which are equivalent in number of steps as a 'straight' move:
-    # old_distance_to_target = -max(abs(old_pos[0] - old_target[0]), abs(old_pos[1] - old_target[1]))
-    # new_distance_to_target = -max(abs(agent_pos[0] - old_target[0]), abs(agent_pos[1] - old_target[1]))
-
     # Use euclidean distance in a continuous space
     old_distance_to_target = -np.sqrt((old_pos[0] - old_target[0])**2 + (old_pos[1] - old_target[1])**2)
     new_distance_to_target = -np.sqrt((agent_pos[0] - old_target[0])**2 + (agent_pos[1] - old_target[1])**2)
@@ -67,13 +61,3 @@ def shaping_reward(old_pos, old_target, agent_pos):
     shaping_reward = gamma*new_distance_to_target - old_distance_to_target
     return shaping_reward
 
-
-def _agent_in_forbidden_zone(agent_pos, agent_radius, forbidden_zones):
-    """Check if the agent is in one of the forbidden zones to properly assign a negative reward to this."""
-    in_forbidden_zone = False
-    x, y = agent_pos
-    r = agent_radius
-    for xmin, ymin, xmax, ymax in forbidden_zones:  # Iterate over forbidden zones
-        if (x + r > xmin and x - r < xmax and y + r > ymin and y - r < ymax):
-            in_forbidden_zone = True
-    return in_forbidden_zone  # If not in a forbidden zone then return false

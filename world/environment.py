@@ -7,7 +7,7 @@ from world.utils.env_reset import (
     sample_points_in_rectangles, 
     sample_one_point_outside, 
     set_difficulty_of_env,
-    calc_vision_triangle
+    calc_barcode_triangle
 )
 from world.utils.env_step import (
     calc_new_position,
@@ -18,7 +18,7 @@ from world.utils.env_step import (
 from world.utils.compute_features import (
     compute_distance_to_obstacle,
     compute_target,
-    calc_vision_triangle_features,
+    calc_barcode_sensor_features,
 )
 from world.utils.env_init import (
     create_delivery_zones,
@@ -80,7 +80,6 @@ class Environment(gym.Env):
         else:
             self.extra_obstacles = []
 
-        self.forbidden_zones = []  # self.forbidden_zones = [(14, self.height - 12 * half_width_of_rack, 17.5, self.height - 8 * half_width_of_rack)]  # Red Area: forbidden zones, where the agent can but should not go
         self.charger = (3.5, 0, 6, 1)  # Green Area: charging area
         self.charger_center = ((self.charger[0] + self.charger[2]) / 2, (self.charger[1] + self.charger[3]) / 2)
 
@@ -111,7 +110,7 @@ class Environment(gym.Env):
             0.0,   # steps_fw_right / max_range
             0.0,   # steps_right / max_range
             0.0,    # battery / 100
-            0.0, #triangle_vision
+            0.0, # barcode sensor
             0.0, # speed
         ], dtype=np.float32)
 
@@ -126,7 +125,7 @@ class Environment(gym.Env):
             1.0,  # steps_fw_right / max_range
             1.0,  # steps_right / max_range
             1.0,   # battery / 100
-            1.0, # triangle vision
+            1.0, # bracode sensor
             2.0, # speed
         ], dtype=np.float32)
 
@@ -141,7 +140,7 @@ class Environment(gym.Env):
         # Call reset to finish initializing the environment
         self.reset()
     
-    def reset(self, no_gui=True, seed=None, agent_start_pos=False, difficulty=None, extra_obstacles=None, number_of_items=None, battery_drain_per_step=None, options=None, difficulty_mode='eval'):
+    def reset(self, seed=None, agent_start_pos=False, difficulty=None, extra_obstacles=None, number_of_items=None, battery_drain_per_step=None, options=None, difficulty_mode='eval'):
         """
         Resetting the environment for a new task for the agent. This involves spawning packages/items, delivery points, the agent itself. 
         It also involves initializing some attributes to the environment and the agent, such as: that it is not carrying any items/packages, 
@@ -161,12 +160,11 @@ class Environment(gym.Env):
             self.difficulty=difficulty
 
         super().reset(seed=seed)
-        info = {} # required for Gymnasium (parallel environments), but unused
+        info = {} # required for Gymnasium (parallel environments)
 
         if extra_obstacles is not None:
             self.extra_obstacles = extra_obstacles
-            # Implicit else: we keep the self.extra_obstacles from the initialization above, which is an empty list for None
-        # Combine all obstacles for collision detection 
+
         self.all_obstacles = self.racks + self.extra_obstacles
 
         if difficulty is not None:
@@ -193,12 +191,11 @@ class Environment(gym.Env):
         else:
             self.agent_pos = np.array(agent_start_pos)  # Use given starting position
 
-        self.vision_triangle = calc_vision_triangle(self.agent_pos, self.orientation, self.agent_radius)
+        self.barcode_triangle = calc_barcode_triangle(self.agent_pos, self.orientation, self.agent_radius)
         self.items = [np.array(pos, dtype=np.float32) for pos in self.item_starts] 
         self.delivered = [False] * len(self.items)
         self.carrying = -1  # -1 = not carrying any items; otherwise this is the index of the item that is at that moment carried by the agent.
         self.battery = 100  # initializes battery
-        self.no_gui = no_gui
 
         return self._compute_features(), info
     
@@ -215,7 +212,8 @@ class Environment(gym.Env):
         - Computing new state (observational feature vector)
         """
         env_stochasticity = np.random.choice([True, False], p=[self.sigma, 1-self.sigma])  # determine whether to do apply environment stochasticity (slippery)
-        # This means duplication the effect of the current action. Therefore the outcome is a more exeggarated situation of the inteded move. 
+        # This means duplication the effect of the current action. Therefore the outcome is a more exeggarated situation of the inteded move.
+
         info = {"env_stochasticity": env_stochasticity}  # we need to supply as step "info" parameter, we add information regarding stochasticity of the step
 
         # Check move for certainty
@@ -245,7 +243,7 @@ class Environment(gym.Env):
             self.speed = 0
 
         # Update delivery and battery information
-        self.vision_triangle = calc_vision_triangle(self.agent_pos, self.orientation, self.agent_radius)
+        self.barcode_triangle = calc_barcode_triangle(self.agent_pos, self.orientation, self.agent_radius)
 
         self.carrying, self.item, self.delivered, pickup, delivered = update_delivery(self.carrying, self.items,
         self.delivered, self.agent_pos, self.agent_radius, self.item_radius, self.delivery_points, self.delivery_radius
@@ -299,7 +297,7 @@ class Environment(gym.Env):
         steps_fw_right = compute_distance_to_obstacle((self.orientation+self.agent_angle)%360,
             self.max_range, self.agent_radius, self.agent_pos, self.width, self.height, self.all_obstacles)  # Right 45
 
-        vision_triangle_sensor = calc_vision_triangle_features(self.agent_pos, self.agent_radius, self.item_starts, self.delivered, self.carrying, self.vision_triangle, self.all_obstacles, self.delivery_points)
+        barcode_sensor = calc_barcode_sensor_features(self.agent_pos, self.agent_radius, self.item_starts, self.delivered, self.carrying, self.barcode_triangle, self.all_obstacles, self.delivery_points)
 
         if self.carrying >= 0:
             carrying = 1
@@ -317,7 +315,7 @@ class Environment(gym.Env):
             steps_fw_right/self.max_range,
             steps_right/self.max_range,
             self.battery/100.0,
-            vision_triangle_sensor,
+            barcode_sensor,
             self.speed,
         ]
         return feature_vector
