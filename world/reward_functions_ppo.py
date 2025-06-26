@@ -54,7 +54,6 @@ def default_reward_function(pickup, delivered, collided, charged_battery_level, 
     return reward
 
 
-
 def shaping_reward(old_pos, old_target, agent_pos):
     """Potential based shaping of the reward inspired by (g, Harada, & Russell, 1999)"""
     gamma = 0.99  # gamma value we use 
@@ -73,10 +72,11 @@ def shaping_reward(old_pos, old_target, agent_pos):
 
 def _agent_in_forbidden_zone(agent_pos, agent_radius, forbidden_zones):
     """Check if the agent is in one of the forbidden zones to properly assign a negative reward to this."""
+    # If not in a forbidden zone, return false
     in_forbidden_zone = False
     x, y = agent_pos
     r = agent_radius
     for xmin, ymin, xmax, ymax in forbidden_zones:  # Iterate over forbidden zones
         if (x + r > xmin and x - r < xmax and y + r > ymin and y - r < ymax):
             in_forbidden_zone = True
-    return in_forbidden_zone  # If not in a forbidden zone then return false
+    return in_forbidden_zone

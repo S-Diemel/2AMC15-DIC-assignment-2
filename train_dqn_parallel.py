@@ -60,7 +60,7 @@ def main(name: str, episodes: int, iters: int, random_seed: int):
         if should_evaluate:
             eval_index = curriculum_phases[phase_number-1]['eval_points'].index(episode)
             print(f"Evaluating agent at episode {episode} (eval point {eval_index}) - Phase: {phase_number}")
-            metrics = evaluate_agent_metrics(agent, difficulty, number_of_items, battery_drain_per_step, no_gui=False)
+            metrics = evaluate_agent_metrics(agent, difficulty, number_of_items, battery_drain_per_step, no_gui=True)
             metrics_by_stage[(phase_number, eval_index)] = metrics
 
         print(f"Episode batch {episode + 1}/{episodes // num_envs} - Epsilon: {epsilon:.4f} - Phase: {phase_number}")

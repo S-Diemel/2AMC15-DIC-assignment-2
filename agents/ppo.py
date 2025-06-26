@@ -238,7 +238,7 @@ class PPOAgent(BaseAgent):
         dataloader = DataLoader(dataset, batch_size=self.batch_size, shuffle=True)
 
         # PPO update based on the 2017 PPO paper
-        for epoch in range(self.ppo_epochs):
+        for _ in range(self.ppo_epochs):
             for batch_states, batch_actions, batch_old_log_probs, batch_returns, batch_advantages in dataloader:
                 # Get current policy outputs
                 probs, state_values = self.policy(batch_states)

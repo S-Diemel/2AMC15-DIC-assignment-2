@@ -92,14 +92,14 @@ def render_gui(self, mode="human", show_full_legend=True, show_difficulty_region
             xmin, ymin, xmax, ymax = self.difficulty_region
             ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="green", alpha=0.2))
 
-    # vision triangle
-    tri_coords = np.array(self.vision_triangle)   # shape (3, 2)
+    # Vision triangle
+    tri_coords = np.array(self.vision_triangle)
     vision_tri = Polygon(
         tri_coords,
         closed=True,
         facecolor="yellow",
         edgecolor=None,
-        alpha=0.4,       # translucent
+        alpha=0.4,
     )
     ax.add_patch(vision_tri)
 
@@ -108,16 +108,16 @@ def render_gui(self, mode="human", show_full_legend=True, show_difficulty_region
         ax.add_patch(Circle(self.agent_pos, self.agent_radius, facecolor="#00A800", edgecolor="orange", linewidth=2))
     else:
         ax.add_patch(Circle(self.agent_pos, self.agent_radius, color="#00A800"))
-    # Compute where the white dot which expresses the agents orientation should be 
-    # -> for 45 degree orientations we need to use the unit circle to make sure that white circle is on the agent. 
+    
+    # Compute location of white dot expressing agent's orientation 
+    # For 45 degree orientations, use unit circle to ensure white circle is on agent 
     dir_vec = np.array(orientation_to_directions(self.orientation), dtype=float)
     dir_unit = dir_vec / np.linalg.norm(dir_vec)
     dot_offset = self.agent_radius * 0.75 
     dot_pos = self.agent_pos + dir_unit * dot_offset
     ax.add_patch(Circle(dot_pos, self.agent_radius * 0.15, color="white"))
 
-    # Add a legend to the GUI for better understanding:
-    # battery, cum hazard, bumps into obstacles, total steps
+    # Add a legend to the GUI for better understanding
     legend_stats = [
         Line2D([0], [0], linestyle="None", label=f"Battery: {self.battery:.1f}%"),
         Line2D([0], [0], linestyle="None", label=f"Total Steps: {self.total_nr_steps:.0f}"),
@@ -154,7 +154,6 @@ def render_gui(self, mode="human", show_full_legend=True, show_difficulty_region
         ]
         if len(self.extra_obstacles) > 0:
             legend_env_info += [Patch(facecolor="#636363", edgecolor="none", label="Extra Obstacle")]
-        # ax.legend(handles=legend_elements, loc="upper right", bbox_to_anchor=(1.15,1))
         legend2 = ax.legend(
             handles=legend_env_info,
             loc="upper right",
