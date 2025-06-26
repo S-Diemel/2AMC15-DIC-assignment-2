@@ -140,7 +140,7 @@ class Environment(gym.Env):
         # Call reset to finish initializing the environment
         self.reset()
     
-    def reset(self, seed=None, agent_start_pos=False, difficulty=None, extra_obstacles=None, number_of_items=None, battery_drain_per_step=None, options=None, difficulty_mode='eval'):
+    def reset(self, no_gui=True, seed=None, agent_start_pos=False, difficulty=None, extra_obstacles=None, number_of_items=None, battery_drain_per_step=None, options=None, difficulty_mode='eval'):
         """
         Resetting the environment for a new task for the agent. This involves spawning packages/items, delivery points, the agent itself. 
         It also involves initializing some attributes to the environment and the agent, such as: that it is not carrying any items/packages, 
@@ -196,7 +196,7 @@ class Environment(gym.Env):
         self.delivered = [False] * len(self.items)
         self.carrying = -1  # -1 = not carrying any items; otherwise this is the index of the item that is at that moment carried by the agent.
         self.battery = 100  # initializes battery
-
+        self.no_gui = no_gui
         return self._compute_features(), info
     
     
@@ -259,7 +259,7 @@ class Environment(gym.Env):
 
         # Compute the reward for this step
         reward = default_reward_function(pickup, delivered, collided, charged, battery_died, old_pos,
-                                         self.agent_pos, self.agent_radius, self.forbidden_zones, old_speed)
+                                         self.agent_pos, old_speed)
         reward += shaping_reward(old_pos, old_target, self.agent_pos)
 
         # Bookkeeping for ending an episode

@@ -92,16 +92,16 @@ def render_gui(self, mode="human", show_full_legend=True, show_difficulty_region
             xmin, ymin, xmax, ymax = self.difficulty_region
             ax.add_patch(Rectangle((xmin, ymin), xmax - xmin, ymax - ymin, color="green", alpha=0.2))
 
-    # Vision triangle
-    tri_coords = np.array(self.vision_triangle)
-    vision_tri = Polygon(
+    # barcode sensor
+    tri_coords = np.array(self.barcode_triangle)   # shape (3, 2)
+    barcode_tri = Polygon(
         tri_coords,
         closed=True,
         facecolor="yellow",
         edgecolor=None,
         alpha=0.4,
     )
-    ax.add_patch(vision_tri)
+    ax.add_patch(barcode_tri)
 
     # Draw Agent
     if self.carrying > -1:  # Give orange edge to agent when carrying an item

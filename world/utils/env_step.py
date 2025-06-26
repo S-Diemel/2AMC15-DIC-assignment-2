@@ -40,7 +40,7 @@ def calc_collision(old_pos, new_position, agent_radius, width, height, all_obsta
         new_pos[1] = height - agent_radius
         collided = True
 
-    # Obstacle collisions
+    # Obstacle collisions, calc new position
     for (xmin, ymin, xmax, ymax) in all_obstacles:
         closest = np.clip(new_pos, [xmin, ymin], [xmax, ymax])
         delta = new_pos - closest
@@ -65,7 +65,7 @@ def update_delivery(carrying, items, delivered, agent_pos, agent_radius, item_ra
     item_delivered = False
     item_picked_up=False
     if carrying == -1:
-        # If we are performing the pickup action, we are not yet carrying any item and we are standing still we can pick up an item.
+        # If we are are not yet carrying any item we can pick up an item.
         for i, (pos, delivered_status) in enumerate(zip(items, delivered)):  
             # Iterate over all items that can be picked up, and make sure we have info on whether these items have been delivered yet.
             if not delivered_status and np.linalg.norm(agent_pos - pos) < agent_radius + item_radius:  
@@ -77,7 +77,7 @@ def update_delivery(carrying, items, delivered, agent_pos, agent_radius, item_ra
     if carrying != -1:  # If we are carrying an item then we should move the item with the agent
         items[carrying] = agent_pos.copy()
 
-    # If we are carrying an item, we do pickup/dropoff action and we are standing still
+    # If we are carrying an item we can deliver it at the pickup point
     if carrying != -1:
         for i, point in enumerate(delivery_points):  
             if carrying == i and np.linalg.norm(agent_pos - point) < agent_radius + delivery_radius:
@@ -97,7 +97,7 @@ def update_battery(battery, battery_drain_per_step, agent_pos, charger, speed, b
     battery -= battery_drain_per_step  # Decrease the battery of the agent at each timestep
     x, y = agent_pos
     xmin, ymin, xmax, ymax = charger
-    if xmin <= x <= xmax and ymin <= y <= ymax and speed == 0: # and action==5:  # if robot stands still in charging stop the battery is full again.
+    if xmin <= x <= xmax and ymin <= y <= ymax and speed == 0:  # if robot stands still in charging stop the battery is full again.
         battery = 100
         if old_battery <= battery_value_reward_charging:  # only reward charging if battery was actually low
             return battery, old_battery
