@@ -9,7 +9,7 @@ def evaluate(model_path: Path):
     agent = PPOAgent(state_size=12, action_size=5, seed=60, num_envs=1)
     agent.load(model_path)
     for i in range(100):
-        l.append(evaluate_agent_training(agent, 1000, True, 3, 3, 0.25, 0))
+        l.append(evaluate_agent_training(agent, 1000, False, 3, 3, 0.25, 0))
     print(l)
     print(sum(l))
 
