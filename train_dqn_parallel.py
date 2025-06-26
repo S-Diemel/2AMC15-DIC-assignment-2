@@ -3,7 +3,6 @@ Train your RL Agent in this file.
 """
 
 from argparse import ArgumentParser
-from tqdm import trange
 from gymnasium.vector import AsyncVectorEnv
 from world.environment import Environment
 from agents.dqn import DQNAgent
@@ -15,8 +14,6 @@ def parse_args():
     p = ArgumentParser(description="DIC Reinforcement Learning Trainer.")
     p.add_argument("--name", type=str, default="", 
                    help="Name of the model to save.")
-    p.add_argument("--no_gui", action="store_true",
-                   help="Disables rendering to train faster")
     p.add_argument("--episodes", type=int, default=10000,
                    help="Number of episodes to train the agent for.")
     p.add_argument("--iters", type=int, default=1000,
@@ -42,9 +39,10 @@ def make_env():
     return _thunk
 
 
-def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
+def main(name: str, episodes: int, iters: int, random_seed: int):
     """Main loop of the program."""
-    num_envs = 5  # Set this to the number of parallel environments you want
+    # Initialize parallel environments for faster training
+    num_envs = 5
     envs = AsyncVectorEnv([make_env() for _ in range(num_envs)])
     agent = DQNAgent(state_size=12, action_size=5, seed=random_seed)
 
@@ -62,7 +60,6 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
         if should_evaluate:
             eval_index = curriculum_phases[phase_number-1]['eval_points'].index(episode)
             print(f"Evaluating agent at episode {episode} (eval point {eval_index}) - Phase: {phase_number}")
-            # TODO: no_gui False is not working
             metrics = evaluate_agent_metrics(agent, difficulty, number_of_items, battery_drain_per_step, no_gui=False)
             metrics_by_stage[(phase_number, eval_index)] = metrics
 
@@ -79,13 +76,11 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
         terminated_envs = np.zeros(num_envs, dtype=bool)
 
         for _ in range(iters):
-            # take action + step in `num_envs` parallel environments
             actions = agent.take_actions_batch(states)
             next_states, rewards, terminateds, truncateds, _ = envs.step(actions)
             dones = terminateds | truncateds
 
             for i in range(num_envs):
-                # Update for all environments - including final step with terminal reward
                 agent.update(states[i], actions[i], rewards[i], next_states[i], dones[i])
 
             # Track rewards
@@ -95,27 +90,22 @@ def main(name: str, no_gui: bool, episodes: int, iters: int, random_seed: int):
 
             # Prepare for next step
             states = next_states
-            #
             if not np.any(active_envs):
                 break
 
-        # Print average reward across environments
         avg_reward = np.mean(episode_rewards)
-        print(f"Average reward across {num_envs} envs: {avg_reward:.2f}")
-        # Print number of envs where objective was completed
-        print(terminated_envs)
+        print(f"Average reward across {num_envs} envs: {avg_reward:.2f}\n{terminated_envs}")
 
-    # Save the trained model
-    model_path = f"models/dqn_{name}_new.pth"
+    # Save trained model and update metrics
+    model_path = f"models/dqn_{name}.pth"
     agent.save(model_path)
     print(f"Saved trained model to -> {model_path}")
 
-    # Save updated metrics to csv
-    csv_filename = f"metrics/dqn_{name}_metrics_new.csv"
+    csv_filename = f"metrics/dqn_{name}_metrics.csv"
     save_metrics_to_csv(metrics_by_stage, csv_filename)
     print(f"Saved evaluation metrics to -> {csv_filename}")
 
 
 if __name__ == '__main__':
     args = parse_args()
-    main(args.name, args.no_gui, args.episodes, args.iters, args.random_seed)
+    main(args.name, args.episodes, args.iters, args.random_seed)

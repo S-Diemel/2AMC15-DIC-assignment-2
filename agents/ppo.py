@@ -4,9 +4,8 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
-
-# Importing BaseAgent class
 from agents import BaseAgent
+
 
 class ActorCritic(nn.Module):
     """
