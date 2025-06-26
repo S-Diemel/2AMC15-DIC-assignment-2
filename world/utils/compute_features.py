@@ -3,6 +3,9 @@ from .action_mapping import orientation_to_directions
 
 
 def compute_distance_to_obstacle(orientation, max_range, agent_radius, agent_pos, width, height, all_obstacles):
+    """
+    simulates a lidar sensor and thus calcultes the distance to an obstacle/wall
+    """
     max_distance = max_range + agent_radius
     direction = np.array(orientation_to_directions(orientation))
     direction = direction / np.linalg.norm(direction)
@@ -103,7 +106,7 @@ def is_point_in_triangle(point, triangle):
     # point is inside if all have the same sign
     return (d1 >= 0 and d2 >= 0 and d3 >= 0) or (d1 <= 0 and d2 <= 0 and d3 <= 0)
 
-def calc_vision_triangle_features(agent_pos, agent_radius, item_starts, delivered, carrying, vision_triangle, all_obstacles, delivery_points):
+def calc_barcode_sensor_features(agent_pos, agent_radius, item_starts, delivered, carrying, vision_triangle, all_obstacles, delivery_points):
     """
     returns a binary whether the agent can scan the correct barcode in its vision triangle.
     """
