@@ -7,12 +7,8 @@ from gymnasium.vector import AsyncVectorEnv
 from world.environment import Environment
 from agents.ppo import PPOAgent
 import numpy as np
-from torch.utils.tensorboard import SummaryWriter
 from train_curriculum_utils import setup_curriculum, get_curriculum_parameters, evaluate_agent_metrics, save_metrics_to_csv
 import time
-
-# Simple tensorboard logging
-writer = SummaryWriter(log_dir=f"logs/ppo_training_10k")
 
 def parse_args():
     p = ArgumentParser(description="DIC Reinforcement Learning Trainer.")
@@ -110,7 +106,8 @@ def main(name: str, episodes: int, iters: int, random_seed: int):
 
         avg_reward = np.mean(episode_rewards)
         print(f"Average reward across {num_envs} envs: {avg_reward:.2f}")
-        writer.add_scalar("Reward/AverageEpisodeReward", avg_reward, global_step=episode)
+
+        # Print number of envs where objective was completed
         print(terminated_envs)
 
         # Store agent model params at multiple points
@@ -129,7 +126,6 @@ def main(name: str, episodes: int, iters: int, random_seed: int):
 
     end_time = time.time()
     print(f"Took {end_time - start_time:.2f} seconds")
-    writer.close()
 
 if __name__ == '__main__':
     args = parse_args()

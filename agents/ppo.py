@@ -223,9 +223,8 @@ class PPOAgent(BaseAgent):
         returns = returns.flatten()
         advantages = advantages.flatten()
 
-        # Normalize advantages and rewards across all environments and timesteps
+        # Normalize advantages across all environments and timesteps
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-        returns = (returns - returns.mean()) / (returns.std() + 1e-8)
 
         # Create DataLoader
         dataset = TensorDataset(

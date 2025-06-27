@@ -14,6 +14,16 @@ RESULTS_DIR = Path("results")
 RESULTS_DIR.mkdir(exist_ok=True)
 RESULTS_TXT = RESULTS_DIR / "all_results.txt"
 
+def set_all_seeds(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True  # Optional: forces deterministic CUDA
+    torch.backends.cudnn.benchmark = False     # Optional: may reduce performance
+
+
+# note: change environment to experiment=True to run rewards
 
 def run_episode(env, agent, name_exp, delivery_zones=None, max_steps=1000, no_gui=True, agent_start_pos=False):
     """Run a single episode in environment determined by experiment name with a given agent."""
@@ -40,7 +50,8 @@ def run_episode(env, agent, name_exp, delivery_zones=None, max_steps=1000, no_gu
 def experiment_stochasticity(agents, levels=(0, 0.02, 0.05, 0.1, 0.2, 0.5), reps=20):
     """Run experiments with different levels of stochasticity."""
     all_results = []
-    for agent in agents:
+
+    for agent_index, agent in enumerate(agents):
         success_rates = []
         avg_steps = []
         std_steps = []
@@ -48,13 +59,17 @@ def experiment_stochasticity(agents, levels=(0, 0.02, 0.05, 0.1, 0.2, 0.5), reps
         std_rewards = []
         all_steps = []
         all_rewards = []
-        for sigma in tqdm(levels, desc="Processing Stochasticity Levels"):
+
+        for level_index, sigma in enumerate(tqdm(levels, desc="Processing Stochasticity Levels")):
             successes = 0
             steps_record = []
             rewards_record = []
             steps_successful = []
             rewards_successful = []
-            for _ in range(reps):
+
+            for rep in range(reps):
+                seed = 3000 + level_index * 100 + rep + agent_index * 10000
+                set_all_seeds(seed)
                 env = Environment(sigma=sigma)
                 success, steps, total_reward = run_episode(env, agent, "stochasticity")
                 if success:
@@ -63,6 +78,7 @@ def experiment_stochasticity(agents, levels=(0, 0.02, 0.05, 0.1, 0.2, 0.5), reps
                     rewards_record.append(total_reward)
                     steps_successful.append(steps)
                     rewards_successful.append(total_reward)
+
             success_rates.append(successes / reps)
             avg_steps.append(np.mean(steps_record) if steps_record else 0)
             std_steps.append(np.std(steps_record) if steps_record else 0)
@@ -70,21 +86,23 @@ def experiment_stochasticity(agents, levels=(0, 0.02, 0.05, 0.1, 0.2, 0.5), reps
             std_rewards.append(np.std(rewards_record) if rewards_record else 0)
             all_steps.append(steps_successful)
             all_rewards.append(rewards_successful)
+
         all_results.append((success_rates, avg_steps, std_steps, avg_rewards, std_rewards, all_steps, all_rewards))
+
     plot_results(
-        levels, all_results, "Stochasticity", "stochasticity_plot.png", boxplot=False
+        levels, all_results, "Stochasticity", "stochasticity_plot1.png", boxplot=False
     )
     append_to_txt("Stochasticity", levels, all_results)
 
 
-def experiment_difficulty(agents, levels=(0,1,2,3,4,5), reps=20):
+
+def experiment_difficulty(agents, levels=(0, 1, 2, 3, 4, 5), reps=20):
     """Run experiments with different levels of difficulty."""
     all_results = []
-    for agent in agents:
+    for agent_index, agent in enumerate(agents):
         xs, srates, avg_steps, avg_rews, all_steps, all_rewards = [], [], [], [], [], []
         for k in tqdm(levels, desc="Difficulty"):
-            random.seed(100 + k)
-            np.random.seed(100 + k)
+            set_all_seeds(100 + k)  # Ensure obstacle setup is reproducible
             obstacle_centers = []
             for _ in range(k):
                 center = np.array(
@@ -99,9 +117,12 @@ def experiment_difficulty(agents, levels=(0,1,2,3,4,5), reps=20):
             size = 0.5
             for (cx, cy) in obstacle_centers:
                 half = size / 2
-                extra_obstacles.append((cx-half, cy-half, cx+half, cy+half))
+                extra_obstacles.append((cx - half, cy - half, cx + half, cy + half))
+
             successes, steps_list, rew_list = 0, [], []
-            for _ in range(reps):
+            for rep in range(reps):
+                seed = 1000 + k * 100 + rep + agent_index * 10000  # unique seed for agent, level, and rep
+                set_all_seeds(seed)
                 env = Environment(extra_obstacles=extra_obstacles)
                 env.reset(extra_obstacles=extra_obstacles)
                 succ, st, rw = run_episode(env, agent, "difficulty")
@@ -109,23 +130,25 @@ def experiment_difficulty(agents, levels=(0,1,2,3,4,5), reps=20):
                     successes += 1
                     steps_list.append(st)
                     rew_list.append(rw)
+
             xs.append(k)
             srates.append(successes / reps)
             avg_steps.append(np.mean(steps_list) if steps_list else 0)
             avg_rews.append(np.mean(rew_list) if rew_list else 0)
             all_steps.append(steps_list)
             all_rewards.append(rew_list)
-        all_results.append((srates, avg_steps, [0]*len(xs), avg_rews, [0]*len(xs), all_steps, all_rewards))
-    plot_results(
-        xs, all_results, "Number of Obstacles", "obstacles.png", boxplot=False
-    )
+
+        all_results.append((srates, avg_steps, [0] * len(xs), avg_rews, [0] * len(xs), all_steps, all_rewards))
+
+    plot_results(xs, all_results, "Number of Obstacles", "obstacles1.png", boxplot=False)
     append_to_txt("Obstacles", xs, all_results)
 
 
 def experiment_target_distance(agents, reps=20):
-    distance_levels = (0, 1, 2, None)  # nearby spawns, medium spawns, hard spawn, all possible spawns
+    distance_levels = (0, 1, 2, None)  # nearby, medium, hard, random
     all_results = []
-    for agent in agents:
+
+    for agent_index, agent in enumerate(agents):
         success_rates = []
         avg_steps = []
         std_steps = []
@@ -133,13 +156,17 @@ def experiment_target_distance(agents, reps=20):
         std_rewards = []
         all_steps = []
         all_rewards = []
-        for distance in tqdm(distance_levels, desc="Processing Distance Levels"):
+
+        for d_index, distance in enumerate(tqdm(distance_levels, desc="Processing Distance Levels")):
             successes = 0
             steps_record = []
             rewards_record = []
             steps_successful = []
             rewards_successful = []
-            for _ in range(reps):
+
+            for rep in range(reps):
+                seed = 2000 + d_index * 100 + rep + agent_index * 10000
+                set_all_seeds(seed)
                 env = Environment(difficulty=distance)
                 success, steps, total_reward = run_episode(env, agent, "distance")
                 if success:
@@ -148,6 +175,7 @@ def experiment_target_distance(agents, reps=20):
                     rewards_record.append(total_reward)
                     steps_successful.append(steps)
                     rewards_successful.append(total_reward)
+
             success_rates.append(successes / reps)
             avg_steps.append(np.mean(steps_record) if steps_record else 0)
             std_steps.append(np.std(steps_record) if steps_record else 0)
@@ -155,9 +183,11 @@ def experiment_target_distance(agents, reps=20):
             std_rewards.append(np.std(rewards_record) if rewards_record else 0)
             all_steps.append(steps_successful)
             all_rewards.append(rewards_successful)
+
         all_results.append((success_rates, avg_steps, std_steps, avg_rewards, std_rewards, all_steps, all_rewards))
+
     plot_results(
-        ["Small", "Medium", "Large", "Random"], all_results, "Distance", "target_distance_plot.png", boxplot=False
+        ["Small", "Medium", "Large", "Random"], all_results, "Distance", "target_distance_plot1.png", boxplot=False
     )
     append_to_txt("Distance", distance_levels, all_results)
 
