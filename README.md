@@ -18,8 +18,8 @@ This repository contains the code and experiments for the Data Intelligence Chal
 - **train_dqn_parallel.py**: Train a DQN agent using parallel environments and curriculum learning. Handles curriculum scheduling, evaluation, and metrics logging.
 - **train_ppo_manual.py**: Train a PPO agent with parallel environments and curriculum learning. Supports entropy scheduling and evaluation.
 - **train_curriculum_utils.py**: Utility functions for curriculum setup, parameter scheduling, evaluation, and metrics saving.
-- **demonstration_trained_dqn.py**: Evaluate a trained DQN agent on an environment or curriculum stage, reporting success and other metrics.
-- **demonstration_trained_ppo.py**: Evaluate a trained PPO agent similarly to the DQN evaluation script.
+- **demonstration_trained_dqn.py**: Demonstrates a trained DQN agent on the standard final training environment, reporting success rate.
+- **demonstration_trained_ppo.py**: Demonstrates a trained PPO agent similarly to the DQN evaluation script.
 - **plot_training_metrics.py**: Plot training and evaluation metrics (e.g., success rate, items delivered) from CSV files generated during training.
 - **plot_experiment_metrics.py**: Plot results from experimental setups (e.g., stochasticity, obstacle density, target distance) for comparing agent robustness and adaptability.
 
@@ -54,7 +54,7 @@ This repository contains the code and experiments for the Data Intelligence Chal
     python demonstration_trained_dqn.py models/dqn.pth
     ```
     - First argument: Path to the trained DQN model checkpoint (`.pth` file).
-    - Evaluates the agent for 100 episodes and prints success statistics.
+    - Demonstrates the agent for 100 episodes and prints success statistics.
     - Note: Renders the GUI for the first 3 runs.
 
   - **PPO:**
@@ -62,7 +62,7 @@ This repository contains the code and experiments for the Data Intelligence Chal
     python demonstration_trained_ppo.py models/ppo.pth
     ```
     - First argument: Path to the trained PPO model checkpoint (`.pth` file).
-    - Evaluates the agent for 100 episodes and prints success statistics.
+    - Demonstrates the agent for 100 episodes and prints success statistics.
     - Note: Renders the GUI for the first 3 runs.
 
 - **Plotting**
