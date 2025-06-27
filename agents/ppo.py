@@ -226,7 +226,6 @@ class PPOAgent(BaseAgent):
 
         # Normalize advantages and rewards across all environments and timesteps
         advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
-        returns = (returns - returns.mean()) / (returns.std() + 1e-8)
 
         # Create DataLoader
         dataset = TensorDataset(
