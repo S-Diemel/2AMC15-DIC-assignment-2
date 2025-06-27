@@ -39,4 +39,3 @@ if __name__ == "__main__":
     p.add_argument("model", type=Path, help="Path to .pth checkpoint")
     args = p.parse_args()
     evaluate(args.model)
-    # Command-line example: python evaluate_trained_dqn.py models/dqn_A1_grid_test.pth grid_configs/A1_grid.npy

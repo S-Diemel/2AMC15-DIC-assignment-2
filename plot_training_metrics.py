@@ -2,6 +2,7 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from argparse import ArgumentParser
+import os
 
 
 def parse_args():
@@ -16,9 +17,9 @@ def parse_args():
 
 
 def main(file_dqn_metrics, file_ppo_metrics):
-    # csv files
-    dqn_csv = file_dqn_metrics if file_dqn_metrics else "metrics/dqn__metrics.csv"
-    ppo_csv = file_ppo_metrics if file_ppo_metrics else "metrics/ppo__metrics.csv"
+    # Accept full file paths for metrics files
+    dqn_csv = os.path.abspath(file_dqn_metrics) if file_dqn_metrics else os.path.abspath("metrics/dqn__metrics.csv")
+    ppo_csv = os.path.abspath(file_ppo_metrics) if file_ppo_metrics else os.path.abspath("metrics/ppo__metrics.csv")
 
     # agent color same as in other plots
     agent_info = {
@@ -81,7 +82,7 @@ def main(file_dqn_metrics, file_ppo_metrics):
     plt.tight_layout()
     plt.savefig("metrics/training_metrics_plot.png", dpi=600, bbox_inches="tight")
 
+
 if __name__ == "__main__":
     args = parse_args()
     main(args.file_dqn_metrics, args.file_ppo_metrics)
-    # Example use: python plot_training_metrics.py --file_dqn_metrics metrics/dqn__metrics.csv --file_ppo_metrics metrics/ppo__metrics.csv

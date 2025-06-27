@@ -1,27 +1,22 @@
-# evaluate_trained_dqn.py
-
-import matplotlib.patches as patches
-import torch
 from pathlib import Path
 import matplotlib.pyplot as plt
 from agents.dqn import DQNAgent
 from world.environment import Environment
-from tqdm import tqdm, trange
+from tqdm import tqdm
 import numpy as np
 import argparse
 import random
-from world.utils.env_init import create_delivery_zones
 from world.utils.env_reset import sample_one_point_outside
-import math
 from agents.ppo import PPOAgent
+
 
 RESULTS_DIR = Path("results")
 RESULTS_DIR.mkdir(exist_ok=True)
 RESULTS_TXT = RESULTS_DIR / "all_results.txt"
 
-# note: change environment to experiment=True to run rewards
 
 def run_episode(env, agent, name_exp, delivery_zones=None, max_steps=1000, no_gui=True, agent_start_pos=False):
+    """Run a single episode in environment determined by experiment name with a given agent."""
     if name_exp != "target_distance":
         state, _ = env.reset(no_gui=no_gui)
     else:
@@ -43,6 +38,7 @@ def run_episode(env, agent, name_exp, delivery_zones=None, max_steps=1000, no_gu
 
 
 def experiment_stochasticity(agents, levels=(0, 0.02, 0.05, 0.1, 0.2, 0.5), reps=20):
+    """Run experiments with different levels of stochasticity."""
     all_results = []
     for agent in agents:
         success_rates = []
@@ -82,6 +78,7 @@ def experiment_stochasticity(agents, levels=(0, 0.02, 0.05, 0.1, 0.2, 0.5), reps
 
 
 def experiment_difficulty(agents, levels=(0,1,2,3,4,5), reps=20):
+    """Run experiments with different levels of difficulty."""
     all_results = []
     for agent in agents:
         xs, srates, avg_steps, avg_rews, all_steps, all_rewards = [], [], [], [], [], []
@@ -252,12 +249,6 @@ def evaluate(model_path1: Path, model_path2: Path):
     print("Experiment Number of Obstacles Finished!")
     experiment_target_distance(agents, reps=reps)
     print("Experiment Target Distance Finished!")
-
-
-
-    # Following command  was used on 24-6-2025 21:38:
-    # python experiments_dqn_ppo.py .\models\dqn_new.pth .\models\ppo_after_training_2500_final.pth
-    # experiments were run on reps 100
 
 
 if __name__ == "__main__":

@@ -37,5 +37,3 @@ if __name__ == "__main__":
     p.add_argument("model", type=Path, help="Path to .pth checkpoint")
     args = p.parse_args()
     evaluate(args.model)
-
-    # Command-line example: python evaluate_trained_ppo.py models/ppo_after_training_2000_final.pth
