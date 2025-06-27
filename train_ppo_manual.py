@@ -10,6 +10,7 @@ import numpy as np
 from train_curriculum_utils import setup_curriculum, get_curriculum_parameters, evaluate_agent_metrics, save_metrics_to_csv
 import time
 
+
 def parse_args():
     p = ArgumentParser(description="DIC Reinforcement Learning Trainer.")
     p.add_argument("--name", type=str, default="",
@@ -22,6 +23,7 @@ def parse_args():
                    help="Random seed value for the environment.")
     return p.parse_args()
 
+
 # Define curriculum phases as:
 # (percent_of_total, entropy_start, entropy_end, difficulty, num_items, battery_drain)
 curriculum = [
@@ -31,6 +33,7 @@ curriculum = [
         (0.30, 0.1, 0.01, 1, 3, 0.25),
         (0.30, 0.1, 0.01, 2, 3, 0.25),
     ]
+
 
 def make_env(difficulty=None):
     def _thunk():
@@ -126,6 +129,7 @@ def main(name: str, episodes: int, iters: int, random_seed: int):
 
     end_time = time.time()
     print(f"Took {end_time - start_time:.2f} seconds")
+
 
 if __name__ == '__main__':
     args = parse_args()

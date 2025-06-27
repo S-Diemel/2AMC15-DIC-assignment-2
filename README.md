@@ -79,7 +79,7 @@ This repository contains the code and experiments for the Data Intelligence Chal
     ```
     - First argument: Path to DQN model checkpoint.
     - Second argument: Path to PPO model checkpoint.
-    - Note: Runs robustness experiments (stochasticity, obstacles, target distance) and saves plots/results in `results/`.
+    - Note: Runs robustness experiments (stochasticity, obstacles, target distance) and saves plots in `results/`.
 
 Plots and metrics are saved in the `metrics/` and `results/` folders.
 

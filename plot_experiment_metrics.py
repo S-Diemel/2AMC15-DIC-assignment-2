@@ -6,6 +6,7 @@ from tqdm import tqdm
 import numpy as np
 import argparse
 import random
+import torch
 from world.utils.env_reset import sample_one_point_outside
 from agents.ppo import PPOAgent
 
@@ -14,16 +15,16 @@ RESULTS_DIR = Path("results")
 RESULTS_DIR.mkdir(exist_ok=True)
 RESULTS_TXT = RESULTS_DIR / "all_results.txt"
 
+
+# Ensure reproducibility
 def set_all_seeds(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.deterministic = True  # Optional: forces deterministic CUDA
-    torch.backends.cudnn.benchmark = False     # Optional: may reduce performance
+    torch.backends.cudnn.deterministic = True  # Forces deterministic CUDA
+    torch.backends.cudnn.benchmark = False
 
-
-# note: change environment to experiment=True to run rewards
 
 def run_episode(env, agent, name_exp, delivery_zones=None, max_steps=1000, no_gui=True, agent_start_pos=False):
     """Run a single episode in environment determined by experiment name with a given agent."""
@@ -247,7 +248,8 @@ def plot_results(x_values, all_results, xlabel, filename, boxplot=False):
     plt.legend()
 
     plt.tight_layout()
-    plt.savefig(RESULTS_DIR / filename)
+    plt.show()
+    # plt.savefig(RESULTS_DIR / filename)
     plt.close()
 
 
