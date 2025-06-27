@@ -45,6 +45,8 @@ This repository contains the code and experiments for the Data Intelligence Chal
     - `--iters`: Number of environment steps per episode batch (default: 1000).
     - `--random_seed`: Random seed for reproducibility (default: 2).
 
+    Note: For PPO, the number of episodes is set directly (e.g., 2500), whereas for DQN with parallel environments, the total episodes are divided by the number of environments to ensure the agent experiences the intended number of episodes. This way, DQN effectively runs for 2000 episodes and PPO for 2500, matching the experimental goals.
+
 - **Evaluation**
 
   - **DQN:**
