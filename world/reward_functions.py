@@ -49,7 +49,6 @@ def default_reward_function(pickup, delivered, collided, charged_battery_level, 
     return reward
 
 
-
 def shaping_reward(old_pos, old_target, agent_pos):
     """Potential based shaping of the reward inspired by (g, Harada, & Russell, 1999)"""
     gamma = 0.99  # gamma value we use
@@ -60,4 +59,3 @@ def shaping_reward(old_pos, old_target, agent_pos):
 
     shaping_reward = gamma*new_distance_to_target - old_distance_to_target
     return shaping_reward
-
