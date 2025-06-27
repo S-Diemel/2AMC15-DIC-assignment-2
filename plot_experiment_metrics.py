@@ -248,8 +248,7 @@ def plot_results(x_values, all_results, xlabel, filename, boxplot=False):
     plt.legend()
 
     plt.tight_layout()
-    plt.show()
-    # plt.savefig(RESULTS_DIR / filename)
+    plt.savefig(RESULTS_DIR / filename)
     plt.close()
 
 
